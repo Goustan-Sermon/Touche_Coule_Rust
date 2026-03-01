@@ -1,0 +1,207 @@
+mod modele;
+use modele::{Coordonnee, Grille, Navire, Orientation, ResultatTir, Partie};
+use std::io::{self, Write};
+
+fn main() {
+    // Initialisation de la partie avec les noms des deux commandants
+    let mut partie = Partie::new("Goustan", "Appoline");
+
+    // --- PHASE DE PRÉPARATION ---
+    
+    // Placement Joueur 1
+    phase_placement(&mut partie.grille_j1, &partie.nom_j1);
+    cacher_ecran();
+
+    // Placement Joueur 2
+    phase_placement(&mut partie.grille_j2, &partie.nom_j2);
+    cacher_ecran();
+
+    // --- PHASE DE COMBAT ---
+
+    println!("=====================================");
+    println!("          DÉBUT DU COMBAT !          ");
+    println!("=====================================");
+
+    loop {
+        // On récupère le nom du joueur actuel (on en fait une String autonome pour éviter 
+        // les conflits d'emprunt de mémoire avec le "borrow checker" de Rust)
+        let nom_actuel = partie.nom_joueur_actuel().to_string(); 
+        
+        println!("\n=====================================");
+        println!("      TOUR DE L'AMIRAL {}      ", nom_actuel.to_uppercase());
+        println!("=====================================");
+
+        println!("\n--- CARTE TACTIQUE ENNEMIE ---");
+        // On affiche la grille adverse avec le brouillard de guerre activé (true)
+        partie.grille_cible().afficher(true);
+
+        // Tir
+        print!("\nAmiral {}, entrez les coordonnées de tir (ex: B2) : ", nom_actuel);
+        io::stdout().flush().unwrap();
+        let mut saisie = String::new();
+        io::stdin().read_line(&mut saisie).unwrap();
+
+        let cible = match analyser_saisie(&saisie) {
+            Some(c) => c,
+            None => {
+                println!("Coordonnées invalides ! Recommencez.");
+                continue; // On ne change pas de tour
+            }
+        };
+
+        // Exécution du tir sur la grille adverse
+        println!(">>> Tir en cours...");
+        match partie.grille_cible().tirer(cible) {
+            ResultatTir::Aleau => println!("Résultat : Plouf... C'est dans l'eau."),
+            ResultatTir::Touche => println!("Résultat : BOUM ! Navire touché !"),
+            ResultatTir::Coule(nom) => println!("Résultat : TOUCHÉ ET COULÉ ! Le {} est détruit !", nom),
+            ResultatTir::DejaJoue => {
+                println!("Résultat : Inutile, vous avez déjà tiré ici. Recommencez.");
+                continue; // On ne change pas de tour si le joueur s'est trompé de case
+            },
+            ResultatTir::HorsLimite => continue,
+        }
+
+        println!("\n--- RÉSULTAT DE L'ATTAQUE ---");
+        partie.grille_cible().afficher(true); // Toujours en "true" pour garder le brouillard de guerre !
+
+        // Vérification de la victoire
+        if partie.grille_cible().flotte_coulee() {
+            println!("\n=================================================");
+            println!("VICTOIRE ! L'Amiral {} a remporté la bataille !", nom_actuel.to_uppercase());
+            println!("=================================================");
+            
+            println!("\n--- CARTE FINALE DE L'ENNEMI ---");
+            partie.grille_cible().afficher(false); // On dévoile tout !
+            break;
+        }
+
+        // Fin du tour : on bascule l'état du joueur et on cache l'écran pour le suivant
+        partie.changer_tour();
+        cacher_ecran();
+    }
+}
+
+fn analyser_saisie(entree: &str) -> Option<Coordonnee> {
+    // On enlève les espaces et les retours à la ligne, et on met tout en majuscules
+    let entree_propre = entree.trim().to_uppercase(); 
+
+    // Si c'est trop court (ex: juste "A"), c'est invalide
+    if entree_propre.len() < 2 {
+        return None;
+    }
+
+    // On extrait la première lettre
+    let lettre = entree_propre.chars().next()?; // Le '?' retourne None direct si ça échoue
+    
+    // On vérifie que c'est bien une lettre entre A et J
+    if lettre < 'A' || lettre > 'J' {
+        return None;
+    }
+    
+    // Petite magie ASCII pour transformer 'A' en 0, 'B' en 1, etc.
+    let x = (lettre as u8 - b'A') as usize;
+
+    // On prend le reste de la chaîne (de l'index 1 jusqu'à la fin) pour le chiffre
+    let reste = &entree_propre[1..];
+    
+    // On essaie de convertir ce texte en nombre entier
+    // parse() renvoie un Result, ok() le transforme en Option, et '?' retourne None si ça rate
+    let ligne: usize = reste.parse().ok()?;
+
+    // On vérifie que le chiffre est entre 1 et 10
+    if ligne < 1 || ligne > 10 {
+        return None;
+    }
+
+    // Si on arrive ici, l'entrée est parfaite ! (On fait -1 car la ligne 1 correspond à l'index 0)
+    Some(Coordonnee { x, y: ligne - 1 })
+}
+
+fn demander_orientation() -> Orientation {
+    loop {
+        print!("Orientation (H pour Horizontal, V pour Vertical) : ");
+        io::stdout().flush().unwrap();
+        
+        let mut saisie = String::new();
+        io::stdin().read_line(&mut saisie).expect("Erreur de lecture");
+
+        // On nettoie la saisie et on vérifie
+        match saisie.trim().to_uppercase().as_str() {
+            "H" => return Orientation::Horizontal,
+            "V" => return Orientation::Vertical,
+            _ => println!("Saisie invalide. Veuillez taper 'H' ou 'V'."),
+        }
+    }
+}
+
+fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
+    // On définit la flotte standard du Touché Coulé (Nom, Taille)
+    let flotte_a_placer = [
+        ("Porte-avions", 5),
+        ("Croiseur", 4),
+        ("Contre-torpilleur", 3),
+        ("Sous-marin", 3),
+        ("Torpilleur", 2),
+    ];
+
+    println!("\n=====================================");
+    println!("   PHASE DE PLACEMENT : AMIRAL {}   ", nom_joueur.to_uppercase());
+    println!("=====================================");
+
+    for (nom, taille) in flotte_a_placer.iter() {
+        loop {
+            println!("\n--- VOTRE CARTE ACTUELLE ---");
+            grille.afficher(false); // On met "false" car le joueur doit voir ses propres bateaux !
+            
+            println!("\nAmiral, où voulez-vous placer le {} (Taille : {}) ?", nom, taille);
+            
+            // 1. Demander les coordonnées
+            print!("Coordonnées de la proue (ex: A1) : ");
+            io::stdout().flush().unwrap();
+            let mut saisie_coord = String::new();
+            io::stdin().read_line(&mut saisie_coord).expect("Erreur de lecture");
+
+            let coord = match analyser_saisie(&saisie_coord) {
+                Some(c) => c,
+                None => {
+                    println!("Coordonnées invalides ! Recommencez.");
+                    continue; // On relance la boucle pour ce même bateau
+                }
+            };
+
+            // 2. Demander l'orientation
+            let orientation = demander_orientation();
+
+            // 3. Créer le navire et tenter de le placer
+            // On déréférence la taille avec *taille car c'est une référence (&usize) issue de l'itérateur
+            let nouveau_navire = Navire::new(nom, *taille, coord, orientation);
+            
+            match grille.placer_navire(nouveau_navire) {
+                Ok(_) => {
+                    println!(">>> {} positionné avec succès !", nom);
+                    break; // Le bateau est placé, on casse cette boucle pour passer au bateau suivant !
+                }
+                Err(message) => {
+                    // Si ça déborde ou chevauche, on affiche l'erreur et on laisse la boucle recommencer
+                    println!("ERREUR : {}", message);
+                    println!("Veuillez choisir un autre emplacement.");
+                }
+            }
+        }
+    }
+    println!("\n--- VOTRE CARTE ACTUELLE ---");        
+    grille.afficher(false); // On met "false" car le joueur doit voir ses propres bateaux !
+    println!("\nTous les navires sont en position !");
+}
+
+fn cacher_ecran() {
+    println!("\nAppuyez sur Entrée pour cacher l'écran et passer le tour...");
+    let mut attente = String::new();
+    io::stdin().read_line(&mut attente).unwrap();
+    
+    // On imprime 50 sauts de ligne pour "nettoyer" le terminal
+    for _ in 0..50 { 
+        println!(); 
+    }
+}
