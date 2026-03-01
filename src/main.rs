@@ -2,9 +2,53 @@ mod modele;
 mod reseau;
 
 use modele::{analyser_saisie, Coordonnee, Grille, Navire, Orientation, Partie, ResultatTir};
-use reseau::MessageReseau;
+use reseau::{heberger_partie, rejoindre_partie, MessageReseau};
+use std::io::{self, Write};
 
 fn main() {
+    println!("=====================================");
+    println!("        BATAILLE NAVALE RÉSEAU       ");
+    println!("=====================================\n");
+
+    let flux_tcp; // Notre fameux "tuyau" réseau
+
+    loop {
+        println!("1. Héberger une partie (Attendre un adversaire)");
+        println!("2. Rejoindre une partie (Se connecter à une adresse IP)");
+        print!("Votre choix (1 ou 2) : ");
+        io::stdout().flush().unwrap();
+
+        let mut choix = String::new();
+        io::stdin().read_line(&mut choix).unwrap();
+
+        match choix.trim() {
+            "1" => {
+                // On lance le serveur
+                if let Some(flux) = heberger_partie("3333") {
+                    flux_tcp = flux;
+                    break;
+                }
+            }
+            "2" => {
+                // On lance le client
+                print!("Entrez l'adresse IP du serveur (ex: 127.0.0.1 pour jouer sur le même PC) : ");
+                io::stdout().flush().unwrap();
+                let mut ip = String::new();
+                io::stdin().read_line(&mut ip).unwrap();
+                
+                if let Some(flux) = rejoindre_partie(ip.trim(), "3333") {
+                    flux_tcp = flux;
+                    break;
+                }
+            }
+            _ => println!("Choix invalide, veuillez taper 1 ou 2.\n"),
+        }
+    }
+
+    println!("\n>>> TEST RÉSEAU TERMINÉ AVEC SUCCÈS ! <<<");
+    // On garde le "return" ici pour stopper le programme avant de lancer le "vrai" jeu pour l'instant
+    return;
+
     // Initialisation de la partie avec les noms des deux commandants
     let mut partie = Partie::new("Goustan", "Appoline");
 

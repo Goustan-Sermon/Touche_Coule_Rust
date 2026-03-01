@@ -18,7 +18,7 @@ pub enum ResultatTir {
     HorsLimite,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Coordonnee {
     pub x: usize,
     pub y: usize,

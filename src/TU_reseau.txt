@@ -1,0 +1,45 @@
+mod modele;
+mod reseau;
+
+// On importe uniquement ce dont on a besoin pour le test
+use modele::Coordonnee;
+use reseau::MessageReseau;
+
+fn main() {
+    println!("=====================================");
+    println!("     BANC D'ESSAI DU PROTOCOLE       ");
+    println!("=====================================\n");
+
+    // TEST 1 : La poignée de main (Hello)
+    let msg_hello = MessageReseau::Hello("Amiral".to_string());
+    let texte_hello = msg_hello.vers_chaine();
+    println!("1. Encodage Hello : {:?}", texte_hello);
+    println!("   Décodage Hello : {:?}\n", MessageReseau::parser(&texte_hello));
+
+    // TEST 2 : Le Tir (Vérification de la conversion des coordonnées)
+    // On simule un tir en C5 (x: 2, y: 4)
+    let msg_tir = MessageReseau::Tir(Coordonnee { x: 2, y: 4 });
+    let texte_tir = msg_tir.vers_chaine();
+    println!("2. Encodage Tir   : {:?}", texte_tir);
+    println!("   Décodage Tir   : {:?}\n", MessageReseau::parser(&texte_tir));
+
+    // TEST 3 : Une réponse complexe avec du texte (Coulé)
+    let msg_coule = MessageReseau::RepCoule("Porte-avions".to_string());
+    let texte_coule = msg_coule.vers_chaine();
+    println!("3. Encodage Coulé : {:?}", texte_coule);
+    println!("   Décodage Coulé : {:?}\n", MessageReseau::parser(&texte_coule));
+
+    // TEST 4 : Le test de robustesse (Sécurité)
+    // Que se passe-t-il si on reçoit des données corrompues ou malveillantes ?
+    let attaque = "PIRATAGE:SERVEUR_SQL\n";
+    let tir_invalide = "TIR:Z99\n";
+    
+    println!("4. Test Sécurité (Attaque) : {:?}", attaque);
+    println!("   Résultat du parser      : {:?}", MessageReseau::parser(attaque));
+    println!("   Test Sécurité (Tir Z99) : {:?}", tir_invalide);
+    println!("   Résultat du parser      : {:?}\n", MessageReseau::parser(tir_invalide));
+    
+    println!("=====================================");
+    println!("        FIN DES TESTS RÉSEAU         ");
+    println!("=====================================");
+}
