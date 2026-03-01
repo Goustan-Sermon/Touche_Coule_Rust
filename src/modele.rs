@@ -274,3 +274,39 @@ impl Partie {
         self.tour_actuel = self.tour_actuel.adversaire();
     }
 }
+
+pub fn analyser_saisie(entree: &str) -> Option<Coordonnee> {
+    // On enlève les espaces et les retours à la ligne, et on met tout en majuscules
+    let entree_propre = entree.trim().to_uppercase(); 
+
+    // Si c'est trop court (ex: juste "A"), c'est invalide
+    if entree_propre.len() < 2 {
+        return None;
+    }
+
+    // On extrait la première lettre
+    let lettre = entree_propre.chars().next()?; // Le '?' retourne None direct si ça échoue
+    
+    // On vérifie que c'est bien une lettre entre A et J
+    if lettre < 'A' || lettre > 'J' {
+        return None;
+    }
+    
+    // Petite magie ASCII pour transformer 'A' en 0, 'B' en 1, etc.
+    let x = (lettre as u8 - b'A') as usize;
+
+    // On prend le reste de la chaîne (de l'index 1 jusqu'à la fin) pour le chiffre
+    let reste = &entree_propre[1..];
+    
+    // On essaie de convertir ce texte en nombre entier
+    // parse() renvoie un Result, ok() le transforme en Option, et '?' retourne None si ça rate
+    let ligne: usize = reste.parse().ok()?;
+
+    // On vérifie que le chiffre est entre 1 et 10
+    if ligne < 1 || ligne > 10 {
+        return None;
+    }
+
+    // Si on arrive ici, l'entrée est parfaite ! (On fait -1 car la ligne 1 correspond à l'index 0)
+    Some(Coordonnee { x, y: ligne - 1 })
+}
