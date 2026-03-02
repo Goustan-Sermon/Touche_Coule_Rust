@@ -1,8 +1,54 @@
 mod modele;
-use modele::{Coordonnee, Grille, Navire, Orientation, ResultatTir, Partie};
+mod reseau;
+
+use modele::{analyser_saisie, Coordonnee, Grille, Navire, Orientation, Partie, ResultatTir};
+use reseau::{heberger_partie, rejoindre_partie, MessageReseau};
 use std::io::{self, Write};
 
 fn main() {
+    println!("=====================================");
+    println!("        BATAILLE NAVALE RÉSEAU       ");
+    println!("=====================================\n");
+
+    let flux_tcp; // Notre fameux "tuyau" réseau
+
+    loop {
+        println!("1. Héberger une partie (Attendre un adversaire)");
+        println!("2. Rejoindre une partie (Se connecter à une adresse IP)");
+        print!("Votre choix (1 ou 2) : ");
+        io::stdout().flush().unwrap();
+
+        let mut choix = String::new();
+        io::stdin().read_line(&mut choix).unwrap();
+
+        match choix.trim() {
+            "1" => {
+                // On lance le serveur
+                if let Some(flux) = heberger_partie("3333") {
+                    flux_tcp = flux;
+                    break;
+                }
+            }
+            "2" => {
+                // On lance le client
+                print!("Entrez l'adresse IP du serveur (ex: 127.0.0.1 pour jouer sur le même PC) : ");
+                io::stdout().flush().unwrap();
+                let mut ip = String::new();
+                io::stdin().read_line(&mut ip).unwrap();
+                
+                if let Some(flux) = rejoindre_partie(ip.trim(), "3333") {
+                    flux_tcp = flux;
+                    break;
+                }
+            }
+            _ => println!("Choix invalide, veuillez taper 1 ou 2.\n"),
+        }
+    }
+
+    println!("\n>>> TEST RÉSEAU TERMINÉ AVEC SUCCÈS ! <<<");
+    // On garde le "return" ici pour stopper le programme avant de lancer le "vrai" jeu pour l'instant
+    return;
+
     // Initialisation de la partie avec les noms des deux commandants
     let mut partie = Partie::new("Goustan", "Appoline");
 
@@ -80,42 +126,6 @@ fn main() {
         partie.changer_tour();
         cacher_ecran();
     }
-}
-
-fn analyser_saisie(entree: &str) -> Option<Coordonnee> {
-    // On enlève les espaces et les retours à la ligne, et on met tout en majuscules
-    let entree_propre = entree.trim().to_uppercase(); 
-
-    // Si c'est trop court (ex: juste "A"), c'est invalide
-    if entree_propre.len() < 2 {
-        return None;
-    }
-
-    // On extrait la première lettre
-    let lettre = entree_propre.chars().next()?; // Le '?' retourne None direct si ça échoue
-    
-    // On vérifie que c'est bien une lettre entre A et J
-    if lettre < 'A' || lettre > 'J' {
-        return None;
-    }
-    
-    // Petite magie ASCII pour transformer 'A' en 0, 'B' en 1, etc.
-    let x = (lettre as u8 - b'A') as usize;
-
-    // On prend le reste de la chaîne (de l'index 1 jusqu'à la fin) pour le chiffre
-    let reste = &entree_propre[1..];
-    
-    // On essaie de convertir ce texte en nombre entier
-    // parse() renvoie un Result, ok() le transforme en Option, et '?' retourne None si ça rate
-    let ligne: usize = reste.parse().ok()?;
-
-    // On vérifie que le chiffre est entre 1 et 10
-    if ligne < 1 || ligne > 10 {
-        return None;
-    }
-
-    // Si on arrive ici, l'entrée est parfaite ! (On fait -1 car la ligne 1 correspond à l'index 0)
-    Some(Coordonnee { x, y: ligne - 1 })
 }
 
 fn demander_orientation() -> Orientation {
