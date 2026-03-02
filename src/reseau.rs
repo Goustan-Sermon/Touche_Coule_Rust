@@ -13,7 +13,7 @@ pub enum MessageReseau {
 }
 
 impl MessageReseau {
-    /// Transforme une chaîne de caractères reçue du réseau en MessageReseau
+    /// Transforme une chaine de caracteres reçue du reseau en MessageReseau
     pub fn parser(texte: &str) -> Option<Self> {
         // split_once(':') coupe le texte en deux au niveau du premier ':'
         let (commande, donnees) = texte.trim().split_once(':')?;
@@ -28,7 +28,7 @@ impl MessageReseau {
                 if donnees == "ALEAU" { Some(MessageReseau::RepAleau) }
                 else if donnees == "TOUCHE" { Some(MessageReseau::RepTouche) }
                 else if donnees == "FIN" { Some(MessageReseau::RepFin) }
-                // Si ça commence par COULE:, on recoupe en deux pour extraire le nom
+                // Si ca commence par COULE:, on recoupe en deux pour extraire le nom
                 else if let Some(("COULE", nom_navire)) = donnees.split_once(':') {
                     Some(MessageReseau::RepCoule(nom_navire.to_string()))
                 } else {
@@ -39,14 +39,14 @@ impl MessageReseau {
         }
     }
 
-    /// Transforme notre MessageReseau en texte pour l'envoyer sur le réseau
+    /// Transforme notre MessageReseau en texte pour l'envoyer sur le reseau
     pub fn vers_chaine(&self) -> String {
-        // On ajoute un '\n' à la fin de chaque message. C'est indispensable pour 
-        // que les sockets TCP sachent où s'arrête le message !
+        // On ajoute un '\n' a la fin de chaque message, indispensable pour 
+        // que les sockets TCP sachent ou s'arrete le message
         match self {
             MessageReseau::Hello(nom) => format!("HELLO:{}\n", nom),
             MessageReseau::Tir(coord) => {
-                // Opération inverse : on retransforme x=1 en 'B' et y=1 en '2'
+                // Operation inverse : on retransforme x=1 en 'B' et y=1 en '2'
                 let lettre = (b'A' + coord.x as u8) as char;
                 let chiffre = coord.y + 1;
                 format!("TIR:{}{}\n", lettre, chiffre)
@@ -60,13 +60,12 @@ impl MessageReseau {
 }
 
 pub fn heberger_partie(port: &str) -> Option<TcpStream> {
-    // 0.0.0.0 signifie "j'écoute sur toutes les cartes réseau de mon ordinateur"
-    // (Wifi, Ethernet, et réseau local interne localhost)
+    // 0.0.0.0 : j'ecoute sur toutes les cartes reseau de mon ordinateur" (Wifi, Ethernet, reseau local)
     let adresse = format!("0.0.0.0:{}", port);
     
     println!("Ouverture du port {}...", port);
 
-    // TcpListener::bind est l'équivalent de bind() en C. Il réserve le port.
+    // TcpListener::bind reserve le port
     let ecouteur = match TcpListener::bind(&adresse) {
         Ok(listener) => listener,
         Err(e) => {
@@ -77,13 +76,11 @@ pub fn heberger_partie(port: &str) -> Option<TcpStream> {
 
     println!("En attente d'un adversaire (En écoute sur {})...", adresse);
 
-    // .accept() bloque le programme ici. Il s'arrête et attend indéfiniment 
-    // jusqu'à ce qu'une connexion réseau entrante arrive.
+    // .accept() bloque le programme ici : il s'arrete jusqu'a ce qu'une connexion reseau entrante arrive
     match ecouteur.accept() {
         Ok((flux, adresse_client)) => {
             println!(">>> Connexion établie avec l'adversaire depuis l'IP : {}", adresse_client);
-            // On retourne le flux TCP (TcpStream). C'est ce "tuyau" qu'on 
-            // utilisera pour envoyer et recevoir nos MessageReseau !
+            // On retourne le flux TCP (TcpStream)
             Some(flux)
         }
         Err(e) => {
@@ -93,12 +90,12 @@ pub fn heberger_partie(port: &str) -> Option<TcpStream> {
     }
 }
 
-/// Tente de se connecter à un serveur distant
+/// Tente de se connecter a un serveur distant
 pub fn rejoindre_partie(ip: &str, port: &str) -> Option<TcpStream> {
     let adresse = format!("{}:{}", ip, port);
     println!("Tentative de connexion à l'Amiral adverse sur {}...", adresse);
 
-    // TcpStream::connect bloque jusqu'à ce que la connexion réussisse ou échoue
+    // TcpStream::connect bloque jusqu'a ce que la connexion reussisse ou echoue
     match TcpStream::connect(&adresse) {
         Ok(flux) => {
             println!(">>> Connexion réussie ! Le canal de communication est ouvert.");
@@ -118,27 +115,26 @@ pub fn envoyer_message(flux: &mut TcpStream, message: &MessageReseau) -> Result<
     // 2. On convertit le texte en octets (bytes) et on l'envoie dans le tuyau
     flux.write_all(texte.as_bytes())?;
     
-    // 3. On force l'envoi immédiat (pour éviter que le système ne mette en cache)
+    // 3. On force l'envoi immediat (pour eviter que le système ne mette en cache)
     flux.flush()?; 
     
     Ok(())
 }
 
 pub fn recevoir_message(flux: &mut TcpStream) -> Option<MessageReseau> {
-    // On emballe notre flux dans un BufReader. C'est un outil très pratique qui 
-    // permet de lire le réseau "ligne par ligne" jusqu'au fameux '\n' !
+    // On emballe notre flux dans un BufReader.
     let mut lecteur = BufReader::new(flux);
     let mut ligne = String::new();
 
-    // On bloque et on attend qu'une ligne arrive sur le réseau
+    // On bloque et on attend qu'une ligne arrive sur le reseau
     match lecteur.read_line(&mut ligne) {
         Ok(0) => {
-            // Si on reçoit 0 octet, c'est que l'adversaire a coupé la connexion
+            // Si on reçoit 0 octet, c'est que l'adversaire a coupe la connexion
             println!("Connexion perdue avec l'adversaire.");
             None
         }
         Ok(_) => {
-            // On a reçu du texte ! On demande à notre parser de le traduire en objet Rust
+            // On a recu du texte, on demande a notre parser de le traduire en objet Rust
             MessageReseau::parser(&ligne)
         }
         Err(e) => {

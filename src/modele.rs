@@ -1,4 +1,3 @@
-// On définit une constante pour la taille de la grille (10x10 est le standard)
 pub const TAILLE_GRILLE: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -13,7 +12,7 @@ pub enum EtatCase {
 pub enum ResultatTir {
     Aleau,
     Touche,
-    Coule(String), // NOUVEAUTÉ : On embarque le nom du navire détruit !
+    Coule(String),
     DejaJoue,
     HorsLimite,
 }
@@ -71,7 +70,6 @@ impl Grille {
                 let symbole = match self.cases[y][x].etat {
                     EtatCase::Vide => '~',
                     EtatCase::Bateau => {
-                        // C'est ici que la magie opère !
                         if cacher_bateaux {
                             '~' // On le camoufle en eau
                         } else {
@@ -91,7 +89,7 @@ impl Grille {
         let mut x = navire.coord_depart.x;
         let mut y = navire.coord_depart.y;
 
-        // ÉTAPE 1 : Vérifier si le bateau sort de la grille
+        // ETAPE 1 : Verifier si le bateau sort de la grille
         match navire.orientation {
             Orientation::Horizontal => {
                 if x + navire.taille > TAILLE_GRILLE {
@@ -105,21 +103,21 @@ impl Grille {
             }
         }
 
-        // ÉTAPE 2 : Vérifier les collisions (est-ce qu'une case est déjà occupée ?)
+        // ETAPE 2 : Verifier les collisions (case deja prise)
         let mut check_x = x;
         let mut check_y = y;
         for _ in 0..navire.taille {
             if self.cases[check_y][check_x].etat != EtatCase::Vide {
                 return Err("Le navire chevauche un autre bateau !");
             }
-            // On avance pour vérifier la case suivante
+            // On avance pour verifier la case suivante
             match navire.orientation {
                 Orientation::Horizontal => check_x += 1,
                 Orientation::Vertical => check_y += 1,
             }
         }
 
-        // ÉTAPE 3 : Tout est bon, on place le bateau !
+        // ETAPE 3 : Tout est bon, on place le bateau !
         for _ in 0..navire.taille {
             self.cases[y][x].etat = EtatCase::Bateau;
             match navire.orientation {
@@ -128,7 +126,7 @@ impl Grille {
             }
         }
 
-        // ÉTAPE 4 : On stocke le navire dans la liste de la grille
+        // ETAPE 4 : On stocke le navire dans la liste de la grille
         self.navires.push(navire);
 
         Ok(())
@@ -147,20 +145,20 @@ impl Grille {
             EtatCase::Bateau => {
                 self.cases[coord.y][coord.x].etat = EtatCase::Touche;
                 
-                // On cherche quel bateau a été touché (on a besoin de "&mut" pour pouvoir le modifier)
+                // On cherche quel bateau a ete touche
                 for navire in &mut self.navires {
                     if navire.occupe(coord) {
-                        navire.touches += 1; // On ajoute un dégât
+                        navire.touches += 1; // On ajoute un degat
                         
                         if navire.est_coule() {
-                            // S'il coule, on renvoie "Coule" avec une copie de son nom
+                            // Si il coule on renvoie "Coule" avec une copie de son nom
                             return ResultatTir::Coule(navire.nom.clone());
                         } else {
                             return ResultatTir::Touche;
                         }
                     }
                 }
-                ResultatTir::Touche // Sécurité au cas où (ne devrait pas arriver)
+                ResultatTir::Touche // Securite au cas ou
             }
             EtatCase::Touche | EtatCase::Aleau => ResultatTir::DejaJoue,
         }
@@ -183,7 +181,7 @@ pub struct Navire {
     pub taille: usize,
     pub coord_depart: Coordonnee,
     pub orientation: Orientation,
-    pub touches: usize, // Compteur pour savoir combien de ses cases sont touchées
+    pub touches: usize, // Compteur pour savoir combien de ses cases sont touchees
 }
 
 impl Navire {
@@ -198,7 +196,6 @@ impl Navire {
         }
     }
 
-    // Une petite méthode pratique pour vérifier si le bateau est détruit
     pub fn est_coule(&self) -> bool {
         self.touches >= self.taille
     }
@@ -249,7 +246,7 @@ impl Partie {
         Partie {
             grille_j1: Grille::new(),
             grille_j2: Grille::new(),
-            tour_actuel: Joueur::J1, // J1 commence toujours
+            tour_actuel: Joueur::J1,
             nom_j1: nom_j1.to_string(),
             nom_j2: nom_j2.to_string(),
         }
@@ -262,7 +259,7 @@ impl Partie {
         }
     }
 
-    // Le point crucial : cette méthode renvoie LA GRILLE SUR LAQUELLE ON TIRE (celle de l'adversaire)
+    // Renvoie la grille sur laquelle on tire
     pub fn grille_cible(&mut self) -> &mut Grille {
         match self.tour_actuel {
             Joueur::J1 => &mut self.grille_j2, // Si c'est au J1 de jouer, il tire sur la grille du J2
@@ -276,30 +273,29 @@ impl Partie {
 }
 
 pub fn analyser_saisie(entree: &str) -> Option<Coordonnee> {
-    // On enlève les espaces et les retours à la ligne, et on met tout en majuscules
+    // On enleve les espaces et les retours a la ligne, et on met tout en majuscules
     let entree_propre = entree.trim().to_uppercase(); 
 
-    // Si c'est trop court (ex: juste "A"), c'est invalide
+    // Invalide si trop court
     if entree_propre.len() < 2 {
         return None;
     }
 
-    // On extrait la première lettre
-    let lettre = entree_propre.chars().next()?; // Le '?' retourne None direct si ça échoue
+    // On extrait la premiere lettre
+    let lettre = entree_propre.chars().next()?; // Le '?' retourne None direct si ça echoue
     
-    // On vérifie que c'est bien une lettre entre A et J
+    // On verifie que c'est bien une lettre entre A et J
     if lettre < 'A' || lettre > 'J' {
         return None;
     }
     
-    // Petite magie ASCII pour transformer 'A' en 0, 'B' en 1, etc.
+    // On transforme 'A' en 0, 'B' en 1, etc.
     let x = (lettre as u8 - b'A') as usize;
 
-    // On prend le reste de la chaîne (de l'index 1 jusqu'à la fin) pour le chiffre
+    // On prend le reste de la chaine (de l'index 1 jusqu'à la fin) pour le chiffre
     let reste = &entree_propre[1..];
     
     // On essaie de convertir ce texte en nombre entier
-    // parse() renvoie un Result, ok() le transforme en Option, et '?' retourne None si ça rate
     let ligne: usize = reste.parse().ok()?;
 
     // On vérifie que le chiffre est entre 1 et 10
@@ -307,6 +303,6 @@ pub fn analyser_saisie(entree: &str) -> Option<Coordonnee> {
         return None;
     }
 
-    // Si on arrive ici, l'entrée est parfaite ! (On fait -1 car la ligne 1 correspond à l'index 0)
+    // On fait -1 car la ligne 1 correspond à l'index 0
     Some(Coordonnee { x, y: ligne - 1 })
 }
