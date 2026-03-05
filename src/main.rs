@@ -52,8 +52,17 @@ fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coor
                         if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; }
                     }
                     KeyCode::Enter => {
-                        // Cible verrouillee on desactive le mode brut et on retourne la coordonnee
+                        // On regarde ce qu'il y a sur la grille (le radar) a cet endroit
+                        let etat_case = &grille.cases[curseur.y][curseur.x].etat;
+                        
+                        // Si la case a deja ete bombardee (Touche ou Aleau) on ignore la touche entree
+                        if *etat_case == modele::EtatCase::Touche || *etat_case == modele::EtatCase::Aleau {
+                            continue; // On relance la boucle sans rien faire le joueur doit bouger
+                        }
+
+                        // Cible valide on desactive le mode brut et on retourne la coordonnee
                         disable_raw_mode().unwrap();
+                        let mut terminal = stdout();
                         execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
                         return curseur;
                     }
@@ -220,7 +229,7 @@ fn main() {
                         break; // Fin du jeu !
                     }
 
-                    // Sinon on renvoie le résultat normal à l'adversaire
+                    // Sinon on renvoie le résultat normal a l'adversaire
                     let reponse = match resultat {
                         ResultatTir::Aleau => MessageReseau::RepAleau,
                         ResultatTir::Touche => MessageReseau::RepTouche,
