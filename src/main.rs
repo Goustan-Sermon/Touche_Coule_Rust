@@ -11,73 +11,6 @@ use crossterm::{
 };
 use std::io::{self, stdout, Write};
 
-/// Nouvelle fonction remplacant totalement l'ancienne saisie textuelle ("B2")
-fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coordonnee {
-    // Le curseur demarre en haut a gauche
-    let mut curseur = Coordonnee { x: 0, y: 0 };
-
-    loop {
-        // 1. AFFICHAGE
-        // On desactive le mode brut pour que les println! s'affichent correctement
-        disable_raw_mode().unwrap();
-        
-        let mut terminal = stdout();
-        execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
-        
-        println!("=================================================");
-        println!(" DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE");
-        println!("=================================================\n");
-        
-        // On affiche la grille en lui passant notre curseur actuel
-        grille.afficher(cacher_bateaux, Some(curseur));
-        
-        // 2. ECOUTE DU CLAVIER
-        // On reactive le mode brut pour capter la prochaine fleche
-        enable_raw_mode().unwrap();
-
-        if let Event::Key(key) = event::read().unwrap() {
-            if key.kind == KeyEventKind::Press {
-                match key.code {
-                    KeyCode::Up => {
-                        if curseur.y > 0 { curseur.y -= 1; }
-                    }
-                    KeyCode::Down => {
-                        // On limite la descente a la taille de la grille (9)
-                        if curseur.y < TAILLE_GRILLE - 1 { curseur.y += 1; }
-                    }
-                    KeyCode::Left => {
-                        if curseur.x > 0 { curseur.x -= 1; }
-                    }
-                    KeyCode::Right => {
-                        if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; }
-                    }
-                    KeyCode::Enter => {
-                        // On regarde ce qu'il y a sur la grille (le radar) a cet endroit
-                        let etat_case = &grille.cases[curseur.y][curseur.x].etat;
-                        
-                        // Si la case a deja ete bombardee (Touche ou Aleau) on ignore la touche entree
-                        if *etat_case == modele::EtatCase::Touche || *etat_case == modele::EtatCase::Aleau {
-                            continue; // On relance la boucle sans rien faire le joueur doit bouger
-                        }
-
-                        // Cible valide on desactive le mode brut et on retourne la coordonnee
-                        disable_raw_mode().unwrap();
-                        let mut terminal = stdout();
-                        execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
-                        return curseur;
-                    }
-                    KeyCode::Esc | KeyCode::Char('q') => {
-                        // Securite pour quitter l'application proprement
-                        disable_raw_mode().unwrap();
-                        std::process::exit(0);
-                    }
-                    _ => {} // On ignore les autres touches
-                }
-            }
-        }
-    }
-}
-
 fn main() {
     nettoyer_ecran();
     println!("=====================================");
@@ -156,27 +89,22 @@ fn main() {
     loop {
         if mon_tour {
             // --- C'EST MON TOUR ---
-            // Nettoyage du terminal
-            let mut terminal = stdout();
-            execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
-
             println!("\n=====================================");
             println!("           À VOTRE TOUR !            ");
             println!("=====================================");
             
-            // Afficher la grille et gérer les flèches
+            // Afficher la grille et gerer les fleches
             let cible = choisir_coordonnee_interactive(&radar, false);
 
-            // Une fois qu'on a appuyé sur Entrée, on réaffiche proprement le radar pour voir où on a tiré 
-            execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+            // Une fois qu'on a appuye sur Entree, on reaffiche proprement le radar pour voir oui on a tire 
             println!("\n--- TIR VERROUILLÉ EN {:?} ---", cible);
             radar.afficher(false, None);
 
-            // 1. On envoie la coordonnée à l'adversaire
+            // 1. On envoie la coordonnee a l'adversaire
             let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
             println!(">>> Tir envoyé ! En attente du rapport de dégâts...");
 
-            // 2. On attend sa réponse pour mettre à jour notre radar
+            // 2. On attend sa reponse pour mettre a jour notre radar
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::RepAleau) => {
                     println!("Résultat : Plouf... C'est dans l'eau.");
@@ -196,7 +124,7 @@ fn main() {
                     println!("=================================================");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                     radar.afficher(false, None);
-                    break; // Fin du jeu !
+                    break; // Fin du jeu 
                 }
                 _ => println!("Erreur réseau inattendue."),
             }
@@ -223,10 +151,10 @@ fn main() {
                     if ma_grille.flotte_coulee() {
                         let _ = envoyer_message(&mut flux_tcp, &MessageReseau::RepFin);
                         println!("\n=================================================");
-                        println!("DÉFAITE... Toute votre flotte a été anéantie.");
+                        println!("  DÉFAITE... Toute votre flotte a été anéantie.  ");
                         println!("=================================================");
                         ma_grille.afficher(false, None);
-                        break; // Fin du jeu !
+                        break; // Fin du jeu 
                     }
 
                     // Sinon on renvoie le résultat normal a l'adversaire
@@ -250,6 +178,61 @@ fn main() {
                 _ => println!("Message inattendu pendant le tour adverse."),
             }
             mon_tour = true; // L'adversaire a fini
+        }
+    }
+}
+
+/// Nouvelle fonction remplacant totalement l'ancienne saisie textuelle ("B2")
+fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coordonnee {
+    let mut curseur = Coordonnee { x: 0, y: 0 };
+    let mut premiere_fois = true;
+
+    loop {
+        disable_raw_mode().unwrap();
+        let mut terminal = stdout();
+        
+        if premiere_fois {
+            premiere_fois = false; // La premiere fois on affiche normalement
+        } else {
+            // Les fois suivantes on remonte de 15 lignes et on efface juste vers le bas pour redessiner proprement
+            execute!(
+                terminal, 
+                cursor::MoveUp(15), 
+                cursor::MoveToColumn(0), 
+                Clear(ClearType::FromCursorDown)
+            ).unwrap();
+        }
+        
+        println!("=================================================");
+        println!("    DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE    ");
+        println!("=================================================\n");
+        
+        grille.afficher(cacher_bateaux, Some(curseur));
+        
+        enable_raw_mode().unwrap();
+
+        if let Event::Key(key) = event::read().unwrap() {
+            if key.kind == KeyEventKind::Press {
+                match key.code {
+                    KeyCode::Up => { if curseur.y > 0 { curseur.y -= 1; } }
+                    KeyCode::Down => { if curseur.y < TAILLE_GRILLE - 1 { curseur.y += 1; } }
+                    KeyCode::Left => { if curseur.x > 0 { curseur.x -= 1; } }
+                    KeyCode::Right => { if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; } }
+                    KeyCode::Enter => {
+                        let etat_case = &grille.cases[curseur.y][curseur.x].etat;
+                        if *etat_case == modele::EtatCase::Touche || *etat_case == modele::EtatCase::Aleau {
+                            continue;
+                        }
+                        disable_raw_mode().unwrap();
+                        return curseur;
+                    }
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        disable_raw_mode().unwrap();
+                        std::process::exit(0);
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 }
