@@ -237,25 +237,88 @@ fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coor
     }
 }
 
-fn demander_orientation() -> Orientation {
-    loop {
-        print!("Orientation (H pour Horizontal, V pour Vertical) : ");
-        io::stdout().flush().unwrap();
-        
-        let mut saisie = String::new();
-        io::stdin().read_line(&mut saisie).expect("Erreur de lecture");
+fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
+    let mut curseur = Coordonnee { x: 0, y: 0 };
+    let mut est_horizontal = true; // On gere l'orientation avec un booleen
+    let mut message_erreur = String::new(); // Pour afficher si on place mal le bateau
 
-        // On nettoie la saisie et on verifie
-        match saisie.trim().to_uppercase().as_str() {
-            "H" => return Orientation::Horizontal,
-            "V" => return Orientation::Vertical,
-            _ => println!("Saisie invalide. Veuillez taper 'H' ou 'V'."),
+    loop {
+        disable_raw_mode().unwrap();
+        let mut terminal = stdout();
+        
+        // On se replace tout en haut a gauche et on nettoie vers le bas
+        execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::FromCursorDown)).unwrap();
+        
+        println!("=================================================");
+        println!(" DÉPLOIEMENT : {} (Taille : {})", nom.to_uppercase(), taille);
+        println!(" Flèches : Déplacer | 'R' : Pivoter | Entrée : Valider");
+        
+        let texte_orientation = if est_horizontal { "Horizontale" } else { "Verticale" };
+        println!(" Orientation actuelle : {}", texte_orientation);
+        println!("=================================================\n");
+
+        // Affichage dynamique des erreurs
+        if !message_erreur.is_empty() {
+            println!("ERREUR : {}\n", message_erreur);
+        } else {
+            println!("\n"); // Pour garder la grille a la meme hauteur
+        }
+
+        // On affiche la grille avec le curseur qui représente la proue du bateau
+        grille.afficher(false, Some(curseur));
+
+        enable_raw_mode().unwrap();
+
+        if let Event::Key(key) = event::read().unwrap() {
+            if key.kind == KeyEventKind::Press {
+                match key.code {
+                    KeyCode::Up => { if curseur.y > 0 { curseur.y -= 1; } }
+                    KeyCode::Down => { if curseur.y < TAILLE_GRILLE - 1 { curseur.y += 1; } }
+                    KeyCode::Left => { if curseur.x > 0 { curseur.x -= 1; } }
+                    KeyCode::Right => { if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; } }
+                    
+                    // La touche R pour pivoter 
+                    KeyCode::Char('r') | KeyCode::Char('R') => {
+                        est_horizontal = !est_horizontal; 
+                        message_erreur.clear(); // On efface l'erreur precedente si on pivote
+                    }
+                    
+                    KeyCode::Enter => {
+                        // On traduit notre booleen en orientation du modele
+                        let orientation = if est_horizontal { 
+                            Orientation::Horizontal 
+                        } else { 
+                            Orientation::Vertical 
+                        };
+                        
+                        // On cree le navire
+                        let nouveau_navire = Navire::new(nom, taille, curseur, orientation);
+
+                        // On tente de le placer
+                        match grille.placer_navire(nouveau_navire) {
+                            Ok(_) => {
+                                // On sort du mode brut et on termine la fonction
+                                disable_raw_mode().unwrap();
+                                return; 
+                            }
+                            Err(msg) => {
+                                // Échec : (débordement ou chevauchement) on stocke l'erreur pour l'afficher
+                                message_erreur = msg.to_string(); 
+                            }
+                        }
+                    }
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        disable_raw_mode().unwrap();
+                        std::process::exit(0);
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 }
 
 fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
-    // On definit la flotte standard
     let flotte_a_placer = [
         ("Porte-avions", 5),
         ("Croiseur", 4),
@@ -264,53 +327,24 @@ fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
         ("Torpilleur", 2),
     ];
 
-    println!("\n=====================================");
-    println!("   PHASE DE PLACEMENT : AMIRAL {}   ", nom_joueur.to_uppercase());
-    println!("=====================================");
-
+    // Pour chaque bateau de la flotte on lance l'interface dediee
     for (nom, taille) in flotte_a_placer.iter() {
-        loop {
-            println!("\n--- VOTRE CARTE ACTUELLE ---");
-            grille.afficher(false, None); // On met "false" car le joueur doit voir ses propres bateaux
-            
-            println!("\nAmiral, où voulez-vous placer le {} (Taille : {}) ?", nom, taille);
-            
-            // 1. Demander les coordonnees
-            print!("Coordonnées de la proue (ex: A1) : ");
-            io::stdout().flush().unwrap();
-            let mut saisie_coord = String::new();
-            io::stdin().read_line(&mut saisie_coord).expect("Erreur de lecture");
-
-            let coord = match analyser_saisie(&saisie_coord) {
-                Some(c) => c,
-                None => {
-                    println!("Coordonnées invalides ! Recommencez.");
-                    continue; // On relance la boucle pour ce meme bateau
-                }
-            };
-
-            // 2. Demander l'orientation
-            let orientation = demander_orientation();
-
-            // 3. Creer le navire et tenter de le placer
-            let nouveau_navire = Navire::new(nom, *taille, coord, orientation);
-            
-            match grille.placer_navire(nouveau_navire) {
-                Ok(_) => {
-                    println!(">>> {} positionné avec succès !", nom);
-                    break; // Le bateau est place, on casse cette boucle pour passer au bateau suivant
-                }
-                Err(message) => {
-                    // Si ca deborde ou chevauche, on affiche l'erreur et on laisse la boucle recommencer
-                    println!("ERREUR : {}", message);
-                    println!("Veuillez choisir un autre emplacement.");
-                }
-            }
-        }
+        placer_navire_interactif(grille, nom, *taille);
     }
-    println!("\n--- VOTRE CARTE ACTUELLE ---");        
+
+    // Affichage final une fois tous les bateaux places
+    let mut terminal = stdout();
+    disable_raw_mode().unwrap(); 
+    execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::FromCursorDown)).unwrap();
+    
+    println!("\n=====================================");
+    println!("   FLOTTE DE {} DÉPLOYÉE !   ", nom_joueur.to_uppercase());
+    println!("=====================================\n");
     grille.afficher(false, None);
-    println!("\nTous les navires sont en position !");
+    
+    println!("\nTous les navires sont en position ! Appuyez sur Entrée pour continuer...");
+    let mut attente = String::new();
+    io::stdin().read_line(&mut attente).unwrap();
 }
 
 fn nettoyer_ecran() {
