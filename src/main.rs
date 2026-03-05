@@ -1,9 +1,73 @@
 mod modele;
 mod reseau;
 
-use modele::{analyser_saisie, Coordonnee, Grille, Navire, Orientation, ResultatTir};
+use modele::{analyser_saisie, Coordonnee, Grille, Navire, Orientation, ResultatTir, TAILLE_GRILLE};
 use reseau::{envoyer_message, heberger_partie, recevoir_message, rejoindre_partie, MessageReseau};
-use std::io::{self, Write};
+use crossterm::{
+    cursor,
+    event::{self, Event, KeyCode, KeyEventKind},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+};
+use std::io::{self, stdout, Write};
+
+/// Nouvelle fonction remplacant totalement l'ancienne saisie textuelle ("B2")
+fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coordonnee {
+    // Le curseur demarre en haut a gauche
+    let mut curseur = Coordonnee { x: 0, y: 0 };
+
+    loop {
+        // 1. AFFICHAGE
+        // On desactive le mode brut pour que les println! s'affichent correctement
+        disable_raw_mode().unwrap();
+        
+        let mut terminal = stdout();
+        execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+        
+        println!("=================================================");
+        println!(" DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE");
+        println!("=================================================\n");
+        
+        // On affiche la grille en lui passant notre curseur actuel
+        grille.afficher(cacher_bateaux, Some(curseur));
+        
+        // 2. ECOUTE DU CLAVIER
+        // On reactive le mode brut pour capter la prochaine fleche
+        enable_raw_mode().unwrap();
+
+        if let Event::Key(key) = event::read().unwrap() {
+            if key.kind == KeyEventKind::Press {
+                match key.code {
+                    KeyCode::Up => {
+                        if curseur.y > 0 { curseur.y -= 1; }
+                    }
+                    KeyCode::Down => {
+                        // On limite la descente a la taille de la grille (9)
+                        if curseur.y < TAILLE_GRILLE - 1 { curseur.y += 1; }
+                    }
+                    KeyCode::Left => {
+                        if curseur.x > 0 { curseur.x -= 1; }
+                    }
+                    KeyCode::Right => {
+                        if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; }
+                    }
+                    KeyCode::Enter => {
+                        // Cible verrouillee on desactive le mode brut et on retourne la coordonnee
+                        disable_raw_mode().unwrap();
+                        execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+                        return curseur;
+                    }
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        // Securite pour quitter l'application proprement
+                        disable_raw_mode().unwrap();
+                        std::process::exit(0);
+                    }
+                    _ => {} // On ignore les autres touches
+                }
+            }
+        }
+    }
+}
 
 fn main() {
     nettoyer_ecran();
@@ -82,30 +146,28 @@ fn main() {
 
     loop {
         if mon_tour {
+            // --- C'EST MON TOUR ---
+            // Nettoyage du terminal
+            let mut terminal = stdout();
+            execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+
             println!("\n=====================================");
-            println!("           A VOTRE TOUR !            ");
+            println!("           À VOTRE TOUR !            ");
             println!("=====================================");
-            println!("\n--- RADAR (VOS TIRS) ---");
-            radar.afficher(false); // On affiche les X et O de nos precedents tirs
+            
+            // Afficher la grille et gérer les flèches
+            let cible = choisir_coordonnee_interactive(&radar, false);
 
-            let cible = loop {
-                print!("\nCoordonnées de tir (ex: B2) : ");
-                io::stdout().flush().unwrap();
-                let mut saisie = String::new();
-                io::stdin().read_line(&mut saisie).unwrap();
+            // Une fois qu'on a appuyé sur Entrée, on réaffiche proprement le radar pour voir où on a tiré 
+            execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+            println!("\n--- TIR VERROUILLÉ EN {:?} ---", cible);
+            radar.afficher(false, None);
 
-                if let Some(c) = analyser_saisie(&saisie) {
-                    break c;
-                }
-                println!("Coordonnées invalides !");
-            };
-
-            // 1. On envoie la coordonnee a l'adversaire
+            // 1. On envoie la coordonnée à l'adversaire
             let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
             println!(">>> Tir envoyé ! En attente du rapport de dégâts...");
 
-        
-            // 2. On attend sa reponse pour mettre a jour notre radar
+            // 2. On attend sa réponse pour mettre à jour notre radar
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::RepAleau) => {
                     println!("Résultat : Plouf... C'est dans l'eau.");
@@ -121,16 +183,18 @@ fn main() {
                 }
                 Some(MessageReseau::RepFin) => {
                     println!("\n=================================================");
-                    println!("VICTOIRE TOTAL ! La flotte de {} est détruite !", nom_adversaire);
+                    println!("VICTOIRE TOTALE ! La flotte ennemie est détruite !");
                     println!("=================================================");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
-                    radar.afficher(false);
-                    break; // Fin du jeu
+                    radar.afficher(false, None);
+                    break; // Fin du jeu !
                 }
                 _ => println!("Erreur réseau inattendue."),
             }
-            println!("\n--- RADAR (VOS TIRS) ---");
-            radar.afficher(false);
+            
+            println!("\n--- RADAR MIS À JOUR ---");
+            radar.afficher(false, None); 
+            
             mon_tour = false; // Fin de mon tour
 
         } else {
@@ -152,7 +216,7 @@ fn main() {
                         println!("\n=================================================");
                         println!("DÉFAITE... Toute votre flotte a été anéantie.");
                         println!("=================================================");
-                        ma_grille.afficher(false);
+                        ma_grille.afficher(false, None);
                         break; // Fin du jeu !
                     }
 
@@ -168,7 +232,7 @@ fn main() {
                     let _ = envoyer_message(&mut flux_tcp, &reponse);
                     
                     println!("\n--- ÉTAT DE VOTRE FLOTTE ---");
-                    ma_grille.afficher(false); // On regarde les degats
+                    ma_grille.afficher(false, None); // On regarde les degats
                 }
                 None => {
                     println!("L'adversaire s'est déconnecté.");
@@ -215,7 +279,7 @@ fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
     for (nom, taille) in flotte_a_placer.iter() {
         loop {
             println!("\n--- VOTRE CARTE ACTUELLE ---");
-            grille.afficher(false); // On met "false" car le joueur doit voir ses propres bateaux
+            grille.afficher(false, None); // On met "false" car le joueur doit voir ses propres bateaux
             
             println!("\nAmiral, où voulez-vous placer le {} (Taille : {}) ?", nom, taille);
             
@@ -253,7 +317,7 @@ fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
         }
     }
     println!("\n--- VOTRE CARTE ACTUELLE ---");        
-    grille.afficher(false);
+    grille.afficher(false, None);
     println!("\nTous les navires sont en position !");
 }
 
