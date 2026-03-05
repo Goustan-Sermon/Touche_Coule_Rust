@@ -55,11 +55,11 @@ impl Grille {
         }
     }
 
-    pub fn afficher(&self, cacher_bateaux: bool) {
+    pub fn afficher(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>) {
         print!("   "); 
         for x in 0..TAILLE_GRILLE {
             let lettre = (b'A' + x as u8) as char;
-            print!("{} ", lettre);
+            print!(" {} ", lettre); // On passe à 3 espaces par case au lieu de 2
         }
         println!(); 
 
@@ -69,17 +69,23 @@ impl Grille {
             for x in 0..TAILLE_GRILLE {
                 let symbole = match self.cases[y][x].etat {
                     EtatCase::Vide => '~',
-                    EtatCase::Bateau => {
-                        if cacher_bateaux {
-                            '~' // On le camoufle en eau
-                        } else {
-                            'B' // On l'affiche si on a les droits
-                        }
-                    }
+                    EtatCase::Bateau => if cacher_bateaux { '~' } else { 'B' },
                     EtatCase::Touche => 'X',
                     EtatCase::Aleau => 'O',
                 };
-                print!("{} ", symbole);
+
+                // On vérifie si le curseur est actuellement sur cette case
+                let est_cible = match curseur {
+                    Some(c) => c.x == x && c.y == y,
+                    None => false,
+                };
+
+                // On encadre la case ciblée, sinon on met des espaces
+                if est_cible {
+                    print!("[{}]", symbole); 
+                } else {
+                    print!(" {} ", symbole); 
+                }
             }
             println!();
         }
