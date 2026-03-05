@@ -1,7 +1,7 @@
 mod modele;
 mod reseau;
 
-use modele::{analyser_saisie, Coordonnee, Grille, Navire, Orientation, ResultatTir, TAILLE_GRILLE};
+use modele::{Coordonnee, Grille, Navire, Orientation, ResultatTir, TAILLE_GRILLE};
 use reseau::{envoyer_message, heberger_partie, recevoir_message, rejoindre_partie, MessageReseau};
 use crossterm::{
     cursor,
@@ -10,6 +10,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 use std::io::{self, stdout, Write};
+use rand::RngExt;
 
 fn main() {
     nettoyer_ecran();
@@ -317,7 +318,7 @@ fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
                 let limite_x = if est_horizontal { TAILLE_GRILLE - taille } else { TAILLE_GRILLE - 1 };
                 let limite_y = if est_horizontal { TAILLE_GRILLE - 1 } else { TAILLE_GRILLE - taille };
 
-                // 2. Si le curseur dépasse cette bordure, on le force à rester dedans
+                // 2. Si le curseur depasse cette bordure on le force a rester dedans
                 if curseur.x > limite_x { curseur.x = limite_x; }
                 if curseur.y > limite_y { curseur.y = limite_y; }
             }
@@ -325,7 +326,7 @@ fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
     }
 }
 
-fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
+fn placer_flotte_aleatoire(grille: &mut Grille) {
     let flotte_a_placer = [
         ("Porte-avions", 5),
         ("Croiseur", 4),
@@ -333,21 +334,73 @@ fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
         ("Sous-marin", 3),
         ("Torpilleur", 2),
     ];
+    
+    let mut rng = rand::rng();
 
-    // Pour chaque bateau de la flotte on lance l'interface dediee
     for (nom, taille) in flotte_a_placer.iter() {
-        placer_navire_interactif(grille, nom, *taille);
+        loop {
+            let x = rng.random_range(0..TAILLE_GRILLE);
+            let y = rng.random_range(0..TAILLE_GRILLE);
+            
+            let orientation = if rng.random_bool(0.5) {
+                Orientation::Horizontal
+            } else {
+                Orientation::Vertical
+            };
+
+            let navire = Navire::new(nom, *taille, Coordonnee { x, y }, orientation);
+            
+            if grille.placer_navire(navire).is_ok() {
+                break;
+            }
+        }
+    }
+}
+
+fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
+    let mut terminal = stdout();
+    disable_raw_mode().unwrap();
+    execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
+    
+    println!("=====================================");
+    println!("   DÉPLOIEMENT : AMIRAL {}   ", nom_joueur.to_uppercase());
+    println!("=====================================\n");
+    
+    // Le menu de choix
+    println!("Comment souhaitez-vous déployer votre flotte ?");
+    println!("1. Manuellement (Flèches du clavier)");
+    println!("2. Aléatoirement (Placement express)");
+    print!("Votre choix (1 ou 2) : ");
+    io::stdout().flush().unwrap();
+    
+    let mut choix = String::new();
+    io::stdin().read_line(&mut choix).unwrap();
+    
+    if choix.trim() == "2" {
+        // Deploiement aleatoire
+        placer_flotte_aleatoire(grille);
+    } else {
+        // Deploiement manuel interactif
+        let flotte_a_placer = [
+            ("Porte-avions", 5),
+            ("Croiseur", 4),
+            ("Contre-torpilleur", 3),
+            ("Sous-marin", 3),
+            ("Torpilleur", 2),
+        ];
+        for (nom, taille) in flotte_a_placer.iter() {
+            placer_navire_interactif(grille, nom, *taille);
+        }
     }
 
-    // Affichage final une fois tous les bateaux places
-    let mut terminal = stdout();
-    disable_raw_mode().unwrap(); 
-    execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::FromCursorDown)).unwrap();
+    // Affichage final de la grille
+    execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
     
     println!("\n=====================================");
     println!("   FLOTTE DE {} DÉPLOYÉE !   ", nom_joueur.to_uppercase());
     println!("=====================================\n");
-    grille.afficher(false, None, None);
+    
+    grille.afficher(false, None, None); 
     
     println!("\nTous les navires sont en position ! Appuyez sur Entrée pour continuer...");
     let mut attente = String::new();
