@@ -55,11 +55,11 @@ impl Grille {
         }
     }
 
-    pub fn afficher(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>) {
+    pub fn afficher(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>, fantome: Option<&Navire>) {
         print!("   "); 
         for x in 0..TAILLE_GRILLE {
             let lettre = (b'A' + x as u8) as char;
-            print!(" {} ", lettre); // On passe à 3 espaces par case au lieu de 2
+            print!(" {} ", lettre);
         }
         println!(); 
 
@@ -74,17 +74,25 @@ impl Grille {
                     EtatCase::Aleau => 'O',
                 };
 
-                // On vérifie si le curseur est actuellement sur cette case
+                // On regarde si on doit dessiner le fantome sur cette case
+                let est_fantome = match fantome {
+                    Some(navire) => navire.occupe(Coordonnee { x, y }),
+                    None => false,
+                };
+
+                // On regarde si le curseur simple est sur cette case
                 let est_cible = match curseur {
                     Some(c) => c.x == x && c.y == y,
                     None => false,
                 };
 
-                // On encadre la case ciblée, sinon on met des espaces
-                if est_cible {
-                    print!("[{}]", symbole); 
+                // L'ordre de priorité de l'affichage :
+                if est_fantome {
+                    print!("[B]"); // L'hologramme du bateau en cours de placement 
+                } else if est_cible {
+                    print!("[{}]", symbole); // Le curseur de tir classique
                 } else {
-                    print!(" {} ", symbole); 
+                    print!(" {} ", symbole); // Case normale
                 }
             }
             println!();

@@ -98,7 +98,7 @@ fn main() {
 
             // Une fois qu'on a appuye sur Entree, on reaffiche proprement le radar pour voir oui on a tire 
             println!("\n--- TIR VERROUILLÉ EN {:?} ---", cible);
-            radar.afficher(false, None);
+            radar.afficher(false, None, None);
 
             // 1. On envoie la coordonnee a l'adversaire
             let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
@@ -123,14 +123,14 @@ fn main() {
                     println!("VICTOIRE TOTALE ! La flotte ennemie est détruite !");
                     println!("=================================================");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
-                    radar.afficher(false, None);
+                    radar.afficher(false, None, None);
                     break; // Fin du jeu 
                 }
                 _ => println!("Erreur réseau inattendue."),
             }
             
             println!("\n--- RADAR MIS À JOUR ---");
-            radar.afficher(false, None); 
+            radar.afficher(false, None, None); 
             
             mon_tour = false; // Fin de mon tour
 
@@ -153,7 +153,7 @@ fn main() {
                         println!("\n=================================================");
                         println!("  DÉFAITE... Toute votre flotte a été anéantie.  ");
                         println!("=================================================");
-                        ma_grille.afficher(false, None);
+                        ma_grille.afficher(false, None, None);
                         break; // Fin du jeu 
                     }
 
@@ -169,7 +169,7 @@ fn main() {
                     let _ = envoyer_message(&mut flux_tcp, &reponse);
                     
                     println!("\n--- ÉTAT DE VOTRE FLOTTE ---");
-                    ma_grille.afficher(false, None); // On regarde les degats
+                    ma_grille.afficher(false, None, None); // On regarde les degats
                 }
                 None => {
                     println!("L'adversaire s'est déconnecté.");
@@ -207,7 +207,7 @@ fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coor
         println!("    DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE    ");
         println!("=================================================\n");
         
-        grille.afficher(cacher_bateaux, Some(curseur));
+        grille.afficher(cacher_bateaux, Some(curseur), None);
         
         enable_raw_mode().unwrap();
 
@@ -264,8 +264,18 @@ fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
             println!("\n"); // Pour garder la grille a la meme hauteur
         }
 
-        // On affiche la grille avec le curseur qui représente la proue du bateau
-        grille.afficher(false, Some(curseur));
+        // 1. On traduit l'orientation actuelle
+        let orientation_fantome = if est_horizontal { 
+            Orientation::Horizontal 
+        } else { 
+            Orientation::Vertical 
+        };
+        
+        // 2. On cree le navire fantome (il n'est pas encore dans la grille c'est juste un modele)
+        let navire_fantome = Navire::new(nom, taille, curseur, orientation_fantome);
+
+        // 3. On l'affiche (On met None pour le curseur simple et Some pour le fantome)
+        grille.afficher(false, None, Some(&navire_fantome));
 
         enable_raw_mode().unwrap();
 
@@ -340,7 +350,7 @@ fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
     println!("\n=====================================");
     println!("   FLOTTE DE {} DÉPLOYÉE !   ", nom_joueur.to_uppercase());
     println!("=====================================\n");
-    grille.afficher(false, None);
+    grille.afficher(false, None, None);
     
     println!("\nTous les navires sont en position ! Appuyez sur Entrée pour continuer...");
     let mut attente = String::new();
