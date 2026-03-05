@@ -283,36 +283,25 @@ fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
             if key.kind == KeyEventKind::Press {
                 match key.code {
                     KeyCode::Up => { if curseur.y > 0 { curseur.y -= 1; } }
-                    KeyCode::Down => { if curseur.y < TAILLE_GRILLE - 1 { curseur.y += 1; } }
+                    KeyCode::Down => { curseur.y += 1; } 
                     KeyCode::Left => { if curseur.x > 0 { curseur.x -= 1; } }
-                    KeyCode::Right => { if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; } }
+                    KeyCode::Right => { curseur.x += 1; }
                     
-                    // La touche R pour pivoter 
                     KeyCode::Char('r') | KeyCode::Char('R') => {
                         est_horizontal = !est_horizontal; 
-                        message_erreur.clear(); // On efface l'erreur precedente si on pivote
+                        message_erreur.clear();
                     }
                     
                     KeyCode::Enter => {
-                        // On traduit notre booleen en orientation du modele
-                        let orientation = if est_horizontal { 
-                            Orientation::Horizontal 
-                        } else { 
-                            Orientation::Vertical 
-                        };
-                        
-                        // On cree le navire
+                        let orientation = if est_horizontal { Orientation::Horizontal } else { Orientation::Vertical };
                         let nouveau_navire = Navire::new(nom, taille, curseur, orientation);
 
-                        // On tente de le placer
                         match grille.placer_navire(nouveau_navire) {
                             Ok(_) => {
-                                // On sort du mode brut et on termine la fonction
                                 disable_raw_mode().unwrap();
                                 return; 
                             }
                             Err(msg) => {
-                                // Échec : (débordement ou chevauchement) on stocke l'erreur pour l'afficher
                                 message_erreur = msg.to_string(); 
                             }
                         }
@@ -323,6 +312,14 @@ fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
                     }
                     _ => {}
                 }
+
+                // 1. On calcule la bordure maximum selon l'orientation et la taille du bateau
+                let limite_x = if est_horizontal { TAILLE_GRILLE - taille } else { TAILLE_GRILLE - 1 };
+                let limite_y = if est_horizontal { TAILLE_GRILLE - 1 } else { TAILLE_GRILLE - taille };
+
+                // 2. Si le curseur dépasse cette bordure, on le force à rester dedans
+                if curseur.x > limite_x { curseur.x = limite_x; }
+                if curseur.y > limite_y { curseur.y = limite_y; }
             }
         }
     }
