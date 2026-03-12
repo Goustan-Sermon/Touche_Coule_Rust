@@ -30,10 +30,21 @@ fn main() {
 
     // 2. Le menu de connexion
     loop {
-        println!("\n1. Héberger une partie");
+        let mut terminal = io::stdout();
+        execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
+
+        println!("=====================================");
+        println!("        BATAILLE NAVALE RÉSEAU       ");
+        println!("=====================================\n");
+        println!("Bienvenue, Amiral {} !\n", mon_nom);
+
+        println!("1. Héberger une partie");
         println!("2. Rejoindre une partie");
-        print!("Choix : ");
+        println!("3. Guide pratique et règles du jeu");
+        println!("4. Quitter le jeu");
+        print!("\nVotre choix (1, 2, 3 ou 4) : ");
         io::stdout().flush().unwrap();
+
         let mut choix = String::new();
         io::stdin().read_line(&mut choix).unwrap();
 
@@ -57,7 +68,20 @@ fn main() {
                     break;
                 }
             }
-            _ => println!("Choix invalide."),
+            "3" => {
+                afficher_guide();
+            }
+            "4" => {
+                // On nettoie l'ecran une derniere fois et on quitte 
+                execute!(terminal, Clear(ClearType::All), cursor::MoveTo(0, 0)).unwrap();
+                println!("Fermeture du Centre de Commandement. Au revoir Amiral {} !\n", mon_nom.to_uppercase());
+                std::process::exit(0);
+            }
+            _ => {
+                println!("Choix invalide. Appuyez sur Entrée pour réessayer...");
+                let mut attente = String::new();
+                io::stdin().read_line(&mut attente).unwrap();
+            }
         }
     }
 
@@ -183,7 +207,43 @@ fn main() {
     }
 }
 
-/// Nouvelle fonction remplacant totalement l'ancienne saisie textuelle ("B2")
+fn afficher_guide() {
+    let mut terminal = io::stdout();
+    execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
+
+    println!("===========================================================");
+    println!("                  GUIDE DE L'AMIRAL                        ");
+    println!("===========================================================\n");
+    
+    println!(" --- CONNEXION RÉSEAU & ADRESSE IP ---");
+    println!("L'Hôte doit communiquer son adresse IP locale au joueur qui le rejoint.");
+    println!("  - Sous Windows : Ouvrez l'invite de commande et tapez 'ipconfig' (cherchez l'adresse IPv4).");
+    println!("  - Sous Linux/Mac (ou WSL) : Ouvrez le terminal et tapez 'hostname -I' ou 'ip a'.");
+    println!("  (Astuce : Tapez '127.0.0.1' pour jouer contre vous-même sur le même PC !)\n");
+
+    println!(" --- COMMANDES DE JEU ---");
+    println!("  - FLÈCHES : Déplacer le curseur de ciblage ou votre bateau.");
+    println!("  - TOUCHE 'R' : Faire pivoter le navire lors du déploiement.");
+    println!("  - ENTRÉE : Valider un tir ou confirmer le placement d'un navire.\n");
+
+    println!(" --- DÉROULEMENT D'UN TOUR ---");
+    println!("  1. C'est votre tour : Vous visez sur le radar et tirez.");
+    println!("  2. Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).");
+    println!("  3. L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.");
+    println!("  4. Les rôles s'inversent ! Le suspense est total.\n");
+
+    println!(" --- LÉGENDE DU RADAR ---");
+    println!("  [~] : Eau inexplorée        [O] : Tir raté (Plouf !)");
+    println!("  [B] : Vos navires           [X] : Navire touché !");
+
+    println!("\n===========================================================");
+    println!("Appuyez sur ENTRÉE pour retourner au Centre de Commandement...");
+    
+    let mut attente = String::new();
+    io::stdin().read_line(&mut attente).unwrap();
+}
+
+/// Nouvelle fonction remplacant l'ancienne saisie textuelle ("B2")
 fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coordonnee {
     let mut curseur = Coordonnee { x: 0, y: 0 };
     let mut premiere_fois = true;
