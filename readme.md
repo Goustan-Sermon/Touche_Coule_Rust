@@ -22,7 +22,7 @@ Allez dans l'onglet **Releases** de ce dépôt GitHub et téléchargez l'exécut
 Si vous préférez compiler le jeu vous-même, assurez-vous d'avoir [Rust et Cargo](https://www.rust-lang.org/tools/install) installés.
 1. Clonez le dépôt :
    ```sh
-   git clone [https://github.com/goustan-sermon/touche_coule_rust.git](https://github.com/goustan-sermon/touche_coule_rust.git)
+   git clone https://github.com/Goustan-Sermon/Touche_Coule_Rust.git
     ```
 2.  Naviguez dans le dossier du projet :
     ```sh
