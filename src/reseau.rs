@@ -14,22 +14,30 @@ impl<T: Read + Write> FluxJeu for T {}
 // (Garde tes enum MessageReseau et ses implémentations exactement tels quels !)
 #[derive(Debug, PartialEq)]
 pub enum MessageReseau {
-    Hello(String),
+    Hello(String, String),
     Tir(Coordonnee),
     RepAleau,
     RepTouche,
     RepCoule(String),
     RepFin,
+    RepAuthOk,
+    RepAuthFail,
 }
 
 impl MessageReseau {
     /// Transforme une chaine de caracteres reçue du reseau en MessageReseau
     pub fn parser(texte: &str) -> Option<Self> {
-        // split_once(':') coupe le texte en deux au niveau du premier ':'
         let (commande, donnees) = texte.trim().split_once(':')?;
 
         match commande {
-            "HELLO" => Some(MessageReseau::Hello(donnees.to_string())),
+            "HELLO" => {
+                // On recoupe "donnees" en deux
+                if let Some((nom, code)) = donnees.split_once(':') {
+                    Some(MessageReseau::Hello(nom.to_string(), code.to_string()))
+                } else {
+                    None // Si le format n'est pas respecte on rejette
+                }
+            },
             "TIR" => {
                 let coord = analyser_saisie(donnees)?; 
                 Some(MessageReseau::Tir(coord))
@@ -38,25 +46,24 @@ impl MessageReseau {
                 if donnees == "ALEAU" { Some(MessageReseau::RepAleau) }
                 else if donnees == "TOUCHE" { Some(MessageReseau::RepTouche) }
                 else if donnees == "FIN" { Some(MessageReseau::RepFin) }
-                // Si ca commence par COULE:, on recoupe en deux pour extraire le nom
+                else if donnees == "AUTH_OK" { Some(MessageReseau::RepAuthOk) }
+                else if donnees == "AUTH_FAIL" { Some(MessageReseau::RepAuthFail) }
                 else if let Some(("COULE", nom_navire)) = donnees.split_once(':') {
                     Some(MessageReseau::RepCoule(nom_navire.to_string()))
                 } else {
-                    None // Commande REP inconnue
+                    None 
                 }
             },
-            _ => None, // Commande totalement inconnue
+            _ => None,
         }
     }
 
     /// Transforme notre MessageReseau en texte pour l'envoyer sur le reseau
     pub fn vers_chaine(&self) -> String {
-        // On ajoute un '\n' a la fin de chaque message, indispensable pour 
-        // que les sockets TCP sachent ou s'arrete le message
         match self {
-            MessageReseau::Hello(nom) => format!("HELLO:{}\n", nom),
+            MessageReseau::Hello(nom, code) => format!("HELLO:{}:{}\n", nom, code),
+            
             MessageReseau::Tir(coord) => {
-                // Operation inverse : on retransforme x=1 en 'B' et y=1 en '2'
                 let lettre = (b'A' + coord.x as u8) as char;
                 let chiffre = coord.y + 1;
                 format!("TIR:{}{}\n", lettre, chiffre)
@@ -65,6 +72,8 @@ impl MessageReseau {
             MessageReseau::RepTouche => "REP:TOUCHE\n".to_string(),
             MessageReseau::RepCoule(nom) => format!("REP:COULE:{}\n", nom),
             MessageReseau::RepFin => "REP:FIN\n".to_string(),
+            MessageReseau::RepAuthOk => "REP:AUTH_OK\n".to_string(),
+            MessageReseau::RepAuthFail => "REP:AUTH_FAIL\n".to_string(),
         }
     }
 }
@@ -190,7 +199,7 @@ fn generer_certificat_serveur() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<
     (vec![cert_der], key_der)
 }
 
-// --- MODULE DE SÉCURITÉ POUR ACCEPTER LE CERTIFICAT AUTO-SIGNÉ ---
+// --- MODULE DE SECURITE POUR ACCEPTER LE CERTIFICAT AUTO-SIGNE ---
 mod tls_verif {
     use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
     use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -208,7 +217,7 @@ mod tls_verif {
             _ocsp_response: &[u8],
             _now: UnixTime,
         ) -> Result<ServerCertVerified, Error> {
-            // On valide TOUS les certificats
+            // On valide tous les certificats
             Ok(ServerCertVerified::assertion())
         }
 
@@ -233,7 +242,7 @@ mod tls_verif {
         }
 
         fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-            // On annonce supporter les algorithmes de base pour que la connexion s'établisse
+            // On annonce supporter les algorithmes de base pour que la connexion s'etablisse
             vec![
                 SignatureScheme::RSA_PKCS1_SHA256,
                 SignatureScheme::ECDSA_NISTP256_SHA256,
