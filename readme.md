@@ -62,6 +62,8 @@ Ce projet a été conçu avec une approche "Security by Design", en traitant les
 * **Génération dynamique de certificats :** Utilisation de `rcgen` pour forger à la volée des certificats auto-signés lors de la création du serveur, sans nécessiter de configuration externe complexe.
 * **Prévention du Déni de Service (DoS) :** Implémentation d'un mécanisme de *clamping* réseau (limite stricte à 64 octets par lecture) pour bloquer les attaques par épuisement de ressources (Buffer Overflow) visant à saturer la RAM.
 * **Validation stricte des paquets :** Le *parser* réseau rejette systématiquement les commandes malformées, garantissant la stabilité du serveur face à des injections de données corrompues.
+* **Port Knocking Applicatif (Anti-Reconnaissance) :** Le port principal du jeu (3333) est masqué par défaut aux scanners réseau (comme `nmap`). Un "Gardien" multi-threadé écoute silencieusement une séquence de frappe spécifique sur des ports leurres (7777, 8888, 9999). Le véritable tunnel chiffré ne s'ouvre qu'après validation de cette séquence dynamique, empêchant toute tentative de connexion non sollicitée.
+* **Contrôle d'Accès & Fail2Ban (Anti-Bruteforce) :** Chaque salon est protégé par une authentification applicative via un code PIN à 4 chiffres généré aléatoirement. Le serveur intègre un registre dynamique (`HashMap`) qui agit comme un bouclier Fail2Ban : il bannit et rejette automatiquement les adresses IP après 3 tentatives d'authentification infructueuses, tout en maintenant le serveur en ligne et résilient.
 ## 📦 Dépendances
 
 * [`crossterm`](https://github.com/crossterm-rs/crossterm) : Pour la manipulation multiplateforme du terminal, l'activation du mode brut (Raw Mode), le contrôle du curseur et le nettoyage de l'écran.
