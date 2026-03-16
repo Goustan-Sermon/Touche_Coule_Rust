@@ -4,6 +4,9 @@ use std::io::{BufRead, BufReader, Write, Read};
 use std::sync::Arc;
 use rustls::{ClientConfig, ServerConfig, StreamOwned, ServerConnection, ClientConnection};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use std::collections::HashMap;
+use std::sync::{Mutex, mpsc};
+use std::thread;
 
 // --- ABSTRACTION ---
 pub trait FluxJeu: Read + Write {
@@ -225,6 +228,64 @@ fn generer_certificat_serveur() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<
     let key_der = PrivateKeyDer::Pkcs8(cert.signing_key.serialize_der().into());
     
     (vec![cert_der], key_der)
+}
+
+/// Port Knocking : On ecoute sur 3 ports et bloque le programme tant que 
+/// la combinaison (7777 -> 8888 -> 9999) n'est pas effectuee dans le bon ordre
+pub fn attendre_port_knocking() {
+    println!("\nGARDIEN : Activation du mode Furtif. Le port 3333 est masqué.");
+    println!("GARDIEN : En attente du signal (Toc-Toc sur 7777, 8888, 9999)...");
+
+    // Talkie-Walkie : 'tx' pour transmettre et 'rx' pour recevoir
+    let (tx, rx) = mpsc::channel();
+
+    // Registre partage et securise (IP -> Etape actuelle)
+    let progression = Arc::new(Mutex::new(HashMap::new()));
+
+    // Combinaison de coffre-fort reseau
+    let ports_secrets = [7777, 8888, 9999];
+
+    // On lance un Thread pour chaque port
+    for (etape, &port) in ports_secrets.iter().enumerate() {
+        // On clone les references pour les donner au Thread
+        let progression_clone = Arc::clone(&progression);
+        let tx_clone = tx.clone();
+        let etape_requise = etape as u8; // 0, 1 ou 2
+
+        thread::spawn(move || {
+            // Le thread ouvre son propre port et ecoute en boucle
+            let ecouteur = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+            
+            for flux in ecouteur.incoming() {
+                if let Ok(stream) = flux {
+                    let ip = stream.peer_addr().unwrap().ip();
+                    
+                    // On verrouille le registre pour verifier ou en est cette IP
+                    let mut registre = progression_clone.lock().unwrap();
+                    let niveau_actuel = registre.entry(ip).or_insert(0);
+                    
+                    if *niveau_actuel == etape_requise {
+                        // L'IP a frappe au bon port on valide l'etape
+                        *niveau_actuel += 1;
+                        
+                        if *niveau_actuel == 3 {
+                            // Sequence complete on envoie l'IP au programme principal
+                            let _ = tx_clone.send(ip);
+                        }
+                    } else {
+                        // Mauvais port ou mauvais ordre on reinitialise son avancement
+                        *niveau_actuel = 0;
+                    }
+                    drop(stream); 
+                }
+            }
+        });
+    }
+
+    // Le programme principal se fige ici et ecoute le Talkie-Walkie tant qu'un thread n'a pas valide la sequence complete
+    let ip_validee = rx.recv().unwrap();
+    
+    println!("GARDIEN : Séquence parfaite de {} ! Déverrouillage du vrai port de jeu...", ip_validee);
 }
 
 // --- MODULE DE SECURITE POUR ACCEPTER LE CERTIFICAT AUTO-SIGNE ---
