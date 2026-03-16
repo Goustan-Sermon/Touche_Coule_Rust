@@ -11,6 +11,8 @@ use crossterm::{
 };
 use std::io::{self, stdout, Write};
 use rand::RngExt;
+use std::collections::HashMap;
+use std::net::IpAddr;
 
 fn main() {
     nettoyer_ecran();
@@ -25,9 +27,10 @@ fn main() {
     io::stdin().read_line(&mut mon_nom).unwrap();
     let mon_nom = mon_nom.trim().to_string();
 
-    let mut flux_tcp; 
     let est_hote;
     let mut code_secret = String::new();
+    let mut ip_serveur = String::new();
+    let mut tentatives_echouees: HashMap<IpAddr, u32> = HashMap::new();
 
     // 2. Le menu de connexion
     loop {
@@ -59,17 +62,15 @@ fn main() {
                 println!("  Transmettez ce code à votre adversaire : {}", code_secret);
                 println!("===================================================\n");
 
-                if let Some(flux) = heberger_partie("3333") {
-                    flux_tcp = flux;
-                    est_hote = true;
-                    break;
-                }
+                est_hote = true;
+                break;
             }
             "2" => {
                 print!("Adresse IP du serveur : ");
                 io::stdout().flush().unwrap();
                 let mut ip = String::new();
                 io::stdin().read_line(&mut ip).unwrap();
+                ip_serveur = ip.trim().to_string(); // On sauvegarde l'IP
                 
                 print!("Code secret du salon : ");
                 io::stdout().flush().unwrap();
@@ -77,11 +78,8 @@ fn main() {
                 io::stdin().read_line(&mut saisie_code).unwrap();
                 code_secret = saisie_code.trim().to_string(); 
                 
-                if let Some(flux) = rejoindre_partie(ip.trim(), "3333") {
-                    flux_tcp = flux;
-                    est_hote = false;
-                    break;
-                }
+                est_hote = false;
+                break;
             }
             "3" => {
                 afficher_guide();
@@ -100,62 +98,83 @@ fn main() {
         }
     }
 
-    // --- 3. AUTHENTIFICATION ET ÉCHANGE DES PSEUDOS ---
-    let nom_adversaire: String;
+    // --- 3. CONNEXION ET AUTHENTIFICATION ---
+    // La boucle tourne en boucle tant que l'authentification n'est pas un succes
+    let (mut flux_tcp, nom_adversaire) = loop {
+        
+        // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre selon le cas)
+        let mut flux = match if est_hote {
+            heberger_partie("3333")
+        } else {
+            rejoindre_partie(&ip_serveur, "3333")
+        } {
+            Some(f) => f,
+            None => {
+                if !est_hote {
+                    println!("Impossible de joindre le serveur. Vérifiez l'IP.");
+                    std::process::exit(1);
+                }
+                // Si l'hote n'a pas pu etablir le tunnel avec un client il relance l'ecoute
+                continue; 
+            }
+        };
 
-    if est_hote {
-        // L'Hôte agit comme un videur de boîte de nuit
-        println!("En attente de l'authentification du client...");
-        
-        match recevoir_message(&mut *flux_tcp) {
-            Some(MessageReseau::Hello(nom_client, code_client)) => {
-                // On vérifie si le code envoyé par le client correspond au nôtre !
-                if code_client == code_secret {
-                    println!(">>> Authentification réussie pour {}.", nom_client);
-                    envoyer_message(&mut *flux_tcp, &MessageReseau::RepAuthOk).unwrap();
-                    nom_adversaire = nom_client;
-                    
-                    // On envoie notre propre pseudo au client en retour (le code n'a plus d'importance ici)
-                    let mon_hello = MessageReseau::Hello(mon_nom.clone(), "".to_string());
-                    envoyer_message(&mut *flux_tcp, &mon_hello).unwrap();
-                } else {
-                    println!("ALERTE : Code incorrect ({}) fourni par {}. Fermeture de la connexion.", code_client, nom_client);
-                    envoyer_message(&mut *flux_tcp, &MessageReseau::RepAuthFail).unwrap();
-                    std::process::exit(1); // On coupe tout !
+        // 2. Controle de securite
+        if est_hote {
+            let ip_client = flux.adresse_ip();
+
+            // Verification sur la liste noire avant de demander le code
+            if let Some(&nb_echecs) = tentatives_echouees.get(&ip_client) {
+                if nb_echecs >= 3 {
+                    println!("IP BANNIE : Tentative de connexion bloquée pour {}", ip_client);
+                    let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
+                    continue; // On refuse la connexion et on retourne au menu d'attente pour le prochain client
                 }
             }
-            _ => {
-                println!("Erreur de protocole d'authentification.");
-                std::process::exit(1);
-            }
-        }
-    } else {
-        // Le Client présente sa carte d'identité et son mot de passe
-        let mon_hello = MessageReseau::Hello(mon_nom.clone(), code_secret.clone());
-        envoyer_message(&mut *flux_tcp, &mon_hello).unwrap();
-        
-        // On attend le verdict du videur (le serveur)
-        match recevoir_message(&mut *flux_tcp) {
-            Some(MessageReseau::RepAuthOk) => {
-                println!(">>> Accès autorisé !");
-                // Le serveur nous accepte, on attend qu'il nous donne son pseudo
-                match recevoir_message(&mut *flux_tcp) {
-                    Some(MessageReseau::Hello(nom_hote, _)) => {
-                        nom_adversaire = nom_hote;
+
+            println!("En attente de l'authentification de {}...", ip_client);
+            
+            match recevoir_message(&mut *flux) {
+                Some(MessageReseau::Hello(nom_client, code_client)) => {
+                    if code_client == code_secret {
+                        println!(">>> Authentification réussie pour {}.", nom_client);
+                        tentatives_echouees.remove(&ip_client); // On efface ses erreurs precedentes en cas de succes
+                        
+                        envoyer_message(&mut *flux, &MessageReseau::RepAuthOk).unwrap();
+                        let mon_hello = MessageReseau::Hello(mon_nom.clone(), "".to_string());
+                        envoyer_message(&mut *flux, &mon_hello).unwrap();
+                        
+                        // SUCCES : On casse la boucle et on renvoie le flux et le nom valide au jeu
+                        break (flux, nom_client); 
+                    } else {
+                        // ECHEC : Ajout à la liste noire
+                        let n = tentatives_echouees.entry(ip_client).or_insert(0);
+                        *n += 1;
+                        println!("ALERTE : Mauvais code ({}/3) de {}", *n, ip_client);
+                        let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     }
-                    _ => panic!("Le serveur n'a pas envoyé son pseudo."),
+                }
+                _ => println!("Déconnexion inattendue pendant l'authentification."),
+            }
+        } else {
+            // Logique du Client
+            let mon_hello = MessageReseau::Hello(mon_nom.clone(), code_secret.clone());
+            envoyer_message(&mut *flux, &mon_hello).unwrap();
+            
+            match recevoir_message(&mut *flux) {
+                Some(MessageReseau::RepAuthOk) => {
+                    println!(">>> Accès autorisé !");
+                    if let Some(MessageReseau::Hello(nom_hote, _)) = recevoir_message(&mut *flux) {
+                        break (flux, nom_hote); // Succes pour le client aussi
+                    }
+                }
+                _ => {
+                    println!("ACCÈS REFUSÉ : Le code de salon est incorrect ou vous êtes banni.");
+                    std::process::exit(1); // Le client ferme son jeu
                 }
             }
-            Some(MessageReseau::RepAuthFail) => {
-                println!("ACCÈS REFUSÉ : Le code de salon est incorrect.");
-                std::process::exit(1); // On quitte le jeu
-            }
-            _ => {
-                println!("Erreur de protocole inattendue.");
-                std::process::exit(1);
-            }
         }
-    }
+    };
 
     println!(">>> Connexion sécurisée avec l'Amiral {} !", nom_adversaire.to_uppercase());
 
