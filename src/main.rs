@@ -2,7 +2,7 @@ mod modele;
 mod reseau;
 
 use modele::{Coordonnee, Grille, Navire, Orientation, ResultatTir, TAILLE_GRILLE};
-use reseau::{envoyer_message, heberger_partie, recevoir_message, rejoindre_partie, MessageReseau};
+use reseau::{attendre_port_knocking, envoyer_message, heberger_partie, recevoir_message, rejoindre_partie, MessageReseau};
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEventKind},
@@ -102,24 +102,38 @@ fn main() {
     // La boucle tourne en boucle tant que l'authentification n'est pas un succes
     let (mut flux_tcp, nom_adversaire) = loop {
         
-        // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre selon le cas)
-        let mut flux = match if est_hote {
+        if est_hote {
+            println!("\n===================================================");
+            println!("  SALON SÉCURISÉ : Attente d'un adversaire...");
+            println!("  CODE SECRET : {}", code_secret);
+            println!("===================================================\n");
+        }
+        
+        // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre)
+        let resultat_connexion = if est_hote {
+            // On bloque le programme ici tant que la sequence n'est pas tapee
+            attendre_port_knocking(); 
+            
+            // Une fois la sequence tapee on ouvre reellement le port 3333
             heberger_partie("3333")
         } else {
             rejoindre_partie(&ip_serveur, "3333")
-        } {
+        };
+
+        // 2. On verifie si la connexion a reussi pour recuperer le flux
+        let mut flux = match resultat_connexion {
             Some(f) => f,
             None => {
                 if !est_hote {
                     println!("Impossible de joindre le serveur. Vérifiez l'IP.");
                     std::process::exit(1);
                 }
-                // Si l'hote n'a pas pu etablir le tunnel avec un client il relance l'ecoute
+                // Si l'hôte n'a pas pu établir le tunnel avec un client, il relance l'écoute
                 continue; 
             }
         };
 
-        // 2. Controle de securite
+        // 3. Controle de securite Fail2Ban et code secret
         if est_hote {
             let ip_client = flux.adresse_ip();
 
