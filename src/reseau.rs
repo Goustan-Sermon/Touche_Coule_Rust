@@ -1,12 +1,13 @@
 use crate::modele::{analyser_saisie, Coordonnee};
 use std::net::{IpAddr, TcpListener, TcpStream};
 use std::io::{BufRead, BufReader, Write, Read};
-use std::sync::Arc;
+use std::sync::{Mutex, mpsc, Arc};
 use rustls::{ClientConfig, ServerConfig, StreamOwned, ServerConnection, ClientConnection};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use std::collections::HashMap;
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::time::Duration;
 
 // --- ABSTRACTION ---
 pub trait FluxJeu: Read + Write {
@@ -111,21 +112,21 @@ impl MessageReseau {
 
 pub fn heberger_partie(port: &str) -> Option<Box<dyn FluxJeu>> {
     let adresse = format!("0.0.0.0:{}", port);
-    println!("Ouverture du port {}...", port);
+    println!("[RÉSEAU] Ouverture du port {}...", port);
 
     let ecouteur = match TcpListener::bind(&adresse) {
         Ok(listener) => listener,
         Err(e) => {
-            println!("Erreur : Impossible d'ouvrir le port {}. ({})", port, e);
+            println!("[RÉSEAU] Erreur : Impossible d'ouvrir le port {}. ({})", port, e);
             return None;
         }
     };
 
-    println!("En attente d'un adversaire (En écoute sur {})...", adresse);
+    println!("[RÉSEAU] En attente d'un adversaire (En écoute sur {})...", adresse);
 
     match ecouteur.accept() {
         Ok((flux_tcp, adresse_client)) => {
-            println!(">>> Connexion TCP établie depuis l'IP : {}. Négociation TLS...", adresse_client);
+            println!("[RÉSEAU] Connexion TCP établie depuis l'IP : {}. Négociation TLS...", adresse_client);
             
             // On active le chiffrement TLS pour sécuriser la communication avec le client
             let (certs, key) = generer_certificat_serveur();
@@ -138,24 +139,49 @@ pub fn heberger_partie(port: &str) -> Option<Box<dyn FluxJeu>> {
             let conn = ServerConnection::new(Arc::new(config)).unwrap();
             let flux_tls = StreamOwned::new(conn, flux_tcp);
             
-            println!(">>> Tunnel chiffré établi avec succès !");
+            println!("[TLS] Tunnel chiffré établi avec succès !");
             // On retourne le flux masque derriere notre Trait
             Some(Box::new(flux_tls))
         }
         Err(e) => {
-            println!("Erreur lors de la connexion du client : {}", e);
+            println!("[TLS] Erreur lors de la connexion du client : {}", e);
             None
         }
     }
 }
 
 pub fn rejoindre_partie(ip: &str, port: &str) -> Option<Box<dyn FluxJeu>> {
+
+    // Port Knocking : Avant de tenter la connexion normale on doit d'abord frapper 
+    // furtivement sur une serie de ports pour deverrouiller le vrai port de jeu
+    println!("[INFILTRATION] Exécution de la séquence de frappe furtive...");
+    let ports_secrets = [7777, 8888, 9999];
+    
+    for p in ports_secrets {
+        let adresse_toc = format!("{}:{}", ip, p);
+        
+        // On se connecte tres brievement
+        if let Ok(stream) = TcpStream::connect(&adresse_toc) {
+            println!(" -> Toc toc sur le port {}...", p);
+            // et on referme la connexion immediatement
+            drop(stream); 
+        }
+        
+        // Pause de 50 millisecondes pour etre sur que les paquets TCP 
+        // arrivent bien dans le bon ordre sur le reseau
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    println!("[INFILTRATION] Séquence terminée, tentative d'accès au port réel...");
+
+    // On attend que le Gardien du serveur ait le temps de nettoyer ses threads et de liberer le port de jeu
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
     let adresse = format!("{}:{}", ip, port);
-    println!("Tentative de connexion à l'Amiral adverse sur {}...", adresse);
+    println!("[RÉSEAU] Tentative de connexion à l'Amiral adverse sur {}...", adresse);
 
     match TcpStream::connect(&adresse) {
         Ok(flux_tcp) => {
-            println!(">>> Connexion TCP réussie ! Négociation du tunnel TLS...");
+            println!("[RÉSEAU] Connexion TCP réussie ! Négociation du tunnel TLS...");
 
             // On active le chiffrement TLS pour sécuriser la communication avec l'hote
             let config = ClientConfig::builder()
@@ -169,11 +195,11 @@ pub fn rejoindre_partie(ip: &str, port: &str) -> Option<Box<dyn FluxJeu>> {
             let conn = ClientConnection::new(Arc::new(config), server_name).unwrap();
             let flux_tls = StreamOwned::new(conn, flux_tcp);
 
-            println!(">>> Tunnel chiffré établi avec succès !");
+            println!("[TLS] Tunnel chiffré établi avec succès !");
             Some(Box::new(flux_tls))
         }
         Err(e) => {
-            println!("Erreur : Impossible d'établir le contact ({}).", e);
+            println!("[RÉSEAU] Erreur : Impossible d'établir le contact ({}).", e);
             None
         }
     }
@@ -213,7 +239,7 @@ pub fn recevoir_message(flux: &mut dyn FluxJeu) -> Option<MessageReseau> {
     }
 }
 
-// Genere un certificat auto-signe et une cle privee a la volee pour l'Hote
+/// Genere un certificat auto-signe et une cle privee a la volee pour l'Hote
 fn generer_certificat_serveur() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<'static>) {
     // On genere un certificat pour "localhost"
     let subject_alt_names = vec!["localhost".to_string()];
@@ -233,59 +259,67 @@ fn generer_certificat_serveur() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<
 /// Port Knocking : On ecoute sur 3 ports et bloque le programme tant que 
 /// la combinaison (7777 -> 8888 -> 9999) n'est pas effectuee dans le bon ordre
 pub fn attendre_port_knocking() {
-    println!("\nGARDIEN : Activation du mode Furtif. Le port 3333 est masqué.");
-    println!("GARDIEN : En attente du signal (Toc-Toc sur 7777, 8888, 9999)...");
+    println!("\n[GARDIEN] Activation du mode Furtif. Le port 3333 est masqué.");
+    println!("[GARDIEN] En attente du signal (Toc-Toc sur 7777, 8888, 9999)...");
 
-    // Talkie-Walkie : 'tx' pour transmettre et 'rx' pour recevoir
     let (tx, rx) = mpsc::channel();
-
-    // Registre partage et securise (IP -> Etape actuelle)
     let progression = Arc::new(Mutex::new(HashMap::new()));
-
-    // Combinaison de coffre-fort reseau
     let ports_secrets = [7777, 8888, 9999];
 
-    // On lance un Thread pour chaque port
+    // flag d'arret partage entre tous les threads
+    let stop_flag = Arc::new(AtomicBool::new(false));
+
     for (etape, &port) in ports_secrets.iter().enumerate() {
-        // On clone les references pour les donner au Thread
         let progression_clone = Arc::clone(&progression);
         let tx_clone = tx.clone();
-        let etape_requise = etape as u8; // 0, 1 ou 2
+        let stop_flag_clone = Arc::clone(&stop_flag);
+        let etape_requise = etape as u8;
 
         thread::spawn(move || {
-            // Le thread ouvre son propre port et ecoute en boucle
             let ecouteur = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
             
-            for flux in ecouteur.incoming() {
-                if let Ok(stream) = flux {
-                    let ip = stream.peer_addr().unwrap().ip();
-                    
-                    // On verrouille le registre pour verifier ou en est cette IP
-                    let mut registre = progression_clone.lock().unwrap();
-                    let niveau_actuel = registre.entry(ip).or_insert(0);
-                    
-                    if *niveau_actuel == etape_requise {
-                        // L'IP a frappe au bon port on valide l'etape
-                        *niveau_actuel += 1;
+            // On passe l'ecouteur en mode non-bloquant
+            // Au lieu de figer le thread en attendant une connexion il verifie en continu
+            ecouteur.set_nonblocking(true).unwrap();
+            
+            // Le thread tourne tant que le stop_flag est sur 'false'
+            while !stop_flag_clone.load(Ordering::Relaxed) {
+                match ecouteur.accept() {
+                    Ok((stream, _)) => {
+                        let ip = stream.peer_addr().unwrap().ip();
+                        let mut registre = progression_clone.lock().unwrap();
+                        let niveau_actuel = registre.entry(ip).or_insert(0);
                         
-                        if *niveau_actuel == 3 {
-                            // Sequence complete on envoie l'IP au programme principal
-                            let _ = tx_clone.send(ip);
+                        if *niveau_actuel == etape_requise {
+                            *niveau_actuel += 1;
+                            if *niveau_actuel == 3 {
+                                let _ = tx_clone.send(ip);
+                            }
+                        } else {
+                            *niveau_actuel = 0;
                         }
-                    } else {
-                        // Mauvais port ou mauvais ordre on reinitialise son avancement
-                        *niveau_actuel = 0;
+                        drop(stream);
                     }
-                    drop(stream); 
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        // Personne ne frappe a la porte on dort 50ms pour ne pas epuiser le processeur puis on reverifie
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(_) => {}
                 }
             }
-        });
+        }); // Des qu'il sort du while le thread meurt et libere son port
     }
 
-    // Le programme principal se fige ici et ecoute le Talkie-Walkie tant qu'un thread n'a pas valide la sequence complete
+    // Le programme principal attend que la sequence soit validee
     let ip_validee = rx.recv().unwrap();
     
-    println!("GARDIEN : Séquence parfaite de {} ! Déverrouillage du vrai port de jeu...", ip_validee);
+    // La sequence est bonne : On arrete les 3 threads
+    stop_flag.store(true, Ordering::Relaxed);
+    
+    // On laisse 100 millisecondes aux threads pour voir le flag s'eteindre et relacher les ports
+    thread::sleep(Duration::from_millis(100));
+    
+    println!("[GARDIEN] Séquence parfaite de {} ! Déverrouillage du vrai port de jeu...", ip_validee);
 }
 
 // --- MODULE DE SECURITE POUR ACCEPTER LE CERTIFICAT AUTO-SIGNE ---

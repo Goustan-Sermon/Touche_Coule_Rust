@@ -102,13 +102,6 @@ fn main() {
     // La boucle tourne en boucle tant que l'authentification n'est pas un succes
     let (mut flux_tcp, nom_adversaire) = loop {
         
-        if est_hote {
-            println!("\n===================================================");
-            println!("  SALON SÉCURISÉ : Attente d'un adversaire...");
-            println!("  CODE SECRET : {}", code_secret);
-            println!("===================================================\n");
-        }
-        
         // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre)
         let resultat_connexion = if est_hote {
             // On bloque le programme ici tant que la sequence n'est pas tapee
@@ -140,18 +133,18 @@ fn main() {
             // Verification sur la liste noire avant de demander le code
             if let Some(&nb_echecs) = tentatives_echouees.get(&ip_client) {
                 if nb_echecs >= 3 {
-                    println!("IP BANNIE : Tentative de connexion bloquée pour {}", ip_client);
+                    println!("[BAN] Tentative de connexion bloquée pour {}", ip_client);
                     let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     continue; // On refuse la connexion et on retourne au menu d'attente pour le prochain client
                 }
             }
 
-            println!("En attente de l'authentification de {}...", ip_client);
+            println!("[AUTH] En attente de l'authentification de {}...", ip_client);
             
             match recevoir_message(&mut *flux) {
                 Some(MessageReseau::Hello(nom_client, code_client)) => {
                     if code_client == code_secret {
-                        println!(">>> Authentification réussie pour {}.", nom_client);
+                        println!("[SUCCÈS] Authentification réussie pour {}.", nom_client);
                         tentatives_echouees.remove(&ip_client); // On efface ses erreurs precedentes en cas de succes
                         
                         envoyer_message(&mut *flux, &MessageReseau::RepAuthOk).unwrap();
@@ -164,11 +157,11 @@ fn main() {
                         // ECHEC : Ajout à la liste noire
                         let n = tentatives_echouees.entry(ip_client).or_insert(0);
                         *n += 1;
-                        println!("ALERTE : Mauvais code ({}/3) de {}", *n, ip_client);
+                        println!("[ALERTE] Mauvais code ({}/3) de {}", *n, ip_client);
                         let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     }
                 }
-                _ => println!("Déconnexion inattendue pendant l'authentification."),
+                _ => println!("[ALERTE] Déconnexion inattendue pendant l'authentification."),
             }
         } else {
             // Logique du Client
@@ -177,20 +170,20 @@ fn main() {
             
             match recevoir_message(&mut *flux) {
                 Some(MessageReseau::RepAuthOk) => {
-                    println!(">>> Accès autorisé !");
+                    println!("[SUCCÈS] Accès autorisé !");
                     if let Some(MessageReseau::Hello(nom_hote, _)) = recevoir_message(&mut *flux) {
                         break (flux, nom_hote); // Succes pour le client aussi
                     }
                 }
                 _ => {
-                    println!("ACCÈS REFUSÉ : Le code de salon est incorrect ou vous êtes banni.");
+                    println!("[BAN] Le code de salon est incorrect ou vous êtes banni.");
                     std::process::exit(1); // Le client ferme son jeu
                 }
             }
         }
     };
 
-    println!(">>> Connexion sécurisée avec l'Amiral {} !", nom_adversaire.to_uppercase());
+    println!("\n[ALLIANCE] Connexion sécurisée avec l'Amiral {} !\n", nom_adversaire.to_uppercase());
 
     // 4. La phase de placement (Chacun le fait de son cote localement)
     let mut ma_grille = Grille::new();
