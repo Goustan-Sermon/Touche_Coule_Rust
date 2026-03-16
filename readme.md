@@ -54,9 +54,14 @@ Le code source est organisé en trois modules principaux pour garantir une sépa
 * `src/modele.rs` : Définit les structures de données fondamentales et la logique métier (`Grille`, `Navire`, `Coordonnee`). Gère les règles de collision et le traitement des tirs.
 * `src/reseau.rs` : Implémente la couche réseau. Définit un protocole de communication textuel (`MessageReseau`) avec son parser, et gère l'ouverture des sockets TCP (`TcpListener` et `TcpStream`).
 
-## 🛡️ Aspect Technique & Sécurité
-Ce projet démontre l'utilisation sécurisée de la mémoire en Rust, la gestion de flux TCP asynchrones, et la prévention des comportements indésirables (le parser réseau rejette les commandes malformées, et l'interface empêche physiquement l'utilisateur de sortir des limites de la grille ou de tirer deux fois au même endroit).
+## 🛡️ Aspect Technique & Cybersécurité
 
+Ce projet a été conçu avec une approche "Security by Design", en traitant les vulnérabilités réseau courantes :
+
+* **Chiffrement de bout en bout (TLS 1.3) :** Remplacement des flux TCP en clair par des tunnels sécurisés à l'aide de `rustls`. Impossibilité de tricher via "Sniffing" (Wireshark) ou de réaliser des attaques de type Man-in-the-Middle (MitM).
+* **Génération dynamique de certificats :** Utilisation de `rcgen` pour forger à la volée des certificats auto-signés lors de la création du serveur, sans nécessiter de configuration externe complexe.
+* **Prévention du Déni de Service (DoS) :** Implémentation d'un mécanisme de *clamping* réseau (limite stricte à 64 octets par lecture) pour bloquer les attaques par épuisement de ressources (Buffer Overflow) visant à saturer la RAM.
+* **Validation stricte des paquets :** Le *parser* réseau rejette systématiquement les commandes malformées, garantissant la stabilité du serveur face à des injections de données corrompues.
 ## 📦 Dépendances
 
 * [`crossterm`](https://github.com/crossterm-rs/crossterm) : Pour la manipulation multiplateforme du terminal, l'activation du mode brut (Raw Mode), le contrôle du curseur et le nettoyage de l'écran.

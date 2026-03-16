@@ -27,6 +27,7 @@ fn main() {
 
     let mut flux_tcp; 
     let est_hote;
+    let mut code_secret = String::new();
 
     // 2. Le menu de connexion
     loop {
@@ -50,6 +51,14 @@ fn main() {
 
         match choix.trim() {
             "1" => {
+                let pin = (rand::random::<u16>() % 9000) + 1000;
+                code_secret = pin.to_string();
+                
+                println!("\n===================================================");
+                println!("  SALON SÉCURISÉ CRÉÉ !");
+                println!("  Transmettez ce code à votre adversaire : {}", code_secret);
+                println!("===================================================\n");
+
                 if let Some(flux) = heberger_partie("3333") {
                     flux_tcp = flux;
                     est_hote = true;
@@ -61,6 +70,12 @@ fn main() {
                 io::stdout().flush().unwrap();
                 let mut ip = String::new();
                 io::stdin().read_line(&mut ip).unwrap();
+                
+                print!("Code secret du salon : ");
+                io::stdout().flush().unwrap();
+                let mut saisie_code = String::new();
+                io::stdin().read_line(&mut saisie_code).unwrap();
+                code_secret = saisie_code.trim().to_string(); 
                 
                 if let Some(flux) = rejoindre_partie(ip.trim(), "3333") {
                     flux_tcp = flux;
@@ -85,15 +100,62 @@ fn main() {
         }
     }
 
-    // 3. L'Echange des pseudos (Handshake)
-    println!("\n>>> Échange des données tactiques avec l'adversaire...");
-    let message_hello = MessageReseau::Hello(mon_nom.clone());
-    let _ = envoyer_message(&mut flux_tcp, &message_hello);
+    // --- 3. AUTHENTIFICATION ET ÉCHANGE DES PSEUDOS ---
+    let nom_adversaire: String;
 
-    let nom_adversaire = match recevoir_message(&mut flux_tcp) {
-        Some(MessageReseau::Hello(nom)) => nom,
-        _ => "Adversaire Inconnu".to_string(),
-    };
+    if est_hote {
+        // L'Hôte agit comme un videur de boîte de nuit
+        println!("En attente de l'authentification du client...");
+        
+        match recevoir_message(&mut *flux_tcp) {
+            Some(MessageReseau::Hello(nom_client, code_client)) => {
+                // On vérifie si le code envoyé par le client correspond au nôtre !
+                if code_client == code_secret {
+                    println!(">>> Authentification réussie pour {}.", nom_client);
+                    envoyer_message(&mut *flux_tcp, &MessageReseau::RepAuthOk).unwrap();
+                    nom_adversaire = nom_client;
+                    
+                    // On envoie notre propre pseudo au client en retour (le code n'a plus d'importance ici)
+                    let mon_hello = MessageReseau::Hello(mon_nom.clone(), "".to_string());
+                    envoyer_message(&mut *flux_tcp, &mon_hello).unwrap();
+                } else {
+                    println!("ALERTE : Code incorrect ({}) fourni par {}. Fermeture de la connexion.", code_client, nom_client);
+                    envoyer_message(&mut *flux_tcp, &MessageReseau::RepAuthFail).unwrap();
+                    std::process::exit(1); // On coupe tout !
+                }
+            }
+            _ => {
+                println!("Erreur de protocole d'authentification.");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // Le Client présente sa carte d'identité et son mot de passe
+        let mon_hello = MessageReseau::Hello(mon_nom.clone(), code_secret.clone());
+        envoyer_message(&mut *flux_tcp, &mon_hello).unwrap();
+        
+        // On attend le verdict du videur (le serveur)
+        match recevoir_message(&mut *flux_tcp) {
+            Some(MessageReseau::RepAuthOk) => {
+                println!(">>> Accès autorisé !");
+                // Le serveur nous accepte, on attend qu'il nous donne son pseudo
+                match recevoir_message(&mut *flux_tcp) {
+                    Some(MessageReseau::Hello(nom_hote, _)) => {
+                        nom_adversaire = nom_hote;
+                    }
+                    _ => panic!("Le serveur n'a pas envoyé son pseudo."),
+                }
+            }
+            Some(MessageReseau::RepAuthFail) => {
+                println!("ACCÈS REFUSÉ : Le code de salon est incorrect.");
+                std::process::exit(1); // On quitte le jeu
+            }
+            _ => {
+                println!("Erreur de protocole inattendue.");
+                std::process::exit(1);
+            }
+        }
+    }
 
     println!(">>> Connexion sécurisée avec l'Amiral {} !", nom_adversaire.to_uppercase());
 
