@@ -1,17 +1,45 @@
 use crate::modele::{analyser_saisie, Coordonnee};
-use std::net::{TcpListener, TcpStream};
+use std::net::{IpAddr, TcpListener, TcpStream};
 use std::io::{BufRead, BufReader, Write, Read};
 use std::sync::Arc;
 use rustls::{ClientConfig, ServerConfig, StreamOwned, ServerConnection, ClientConnection};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 
 // --- ABSTRACTION ---
-// On cree un trait qui regroupe la Lecture et l'Ecriture sur un flux de donnees (comme un tuyau de communication)
-pub trait FluxJeu: Read + Write {}
-impl<T: Read + Write> FluxJeu for T {}
+pub trait FluxJeu: Read + Write {
+    /// Oblige chaque type de connexion a savoir donner l'IP de l'adversaire
+    fn adresse_ip(&self) -> IpAddr;
+}
+
+// 1. Capacite de lire l'IP sur une connexion TCP basique
+impl FluxJeu for TcpStream {
+    fn adresse_ip(&self) -> IpAddr {
+        self.peer_addr().unwrap().ip()
+    }
+}
+
+// 2. Capacite de lire l'IP a travers le tunnel TLS du Serveur
+impl FluxJeu for StreamOwned<ServerConnection, TcpStream> {
+    fn adresse_ip(&self) -> IpAddr {
+        self.get_ref().peer_addr().unwrap().ip()
+    }
+}
+
+// 3. Capacite de lire l'IP a travers le tunnel TLS du Client
+impl FluxJeu for StreamOwned<ClientConnection, TcpStream> {
+    fn adresse_ip(&self) -> IpAddr {
+        self.get_ref().peer_addr().unwrap().ip()
+    }
+}
+
+// 4. Permet à notre boite polymorphe de relayer la demande d'IP
+impl FluxJeu for Box<dyn FluxJeu> {
+    fn adresse_ip(&self) -> IpAddr {
+        (**self).adresse_ip()
+    }
+}
 // ---------------------------------
 
-// (Garde tes enum MessageReseau et ses implémentations exactement tels quels !)
 #[derive(Debug, PartialEq)]
 pub enum MessageReseau {
     Hello(String, String),
