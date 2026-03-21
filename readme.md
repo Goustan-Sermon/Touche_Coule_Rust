@@ -70,5 +70,8 @@ Ce projet a été conçu avec une approche "Security by Design", en traitant les
 * **Résilience aux Déconnexions (Fail-Safe) :** Gestion gracieuse des fermetures inattendues de sockets TCP (`Broken Pipe` / Rage-quit). Le serveur intercepte les pertes de connexion sans déclencher de panique mémoire, libère les ports proprement et informe l'adversaire de la désertion.
 ## 📦 Dépendances
 
-* [`crossterm`](https://github.com/crossterm-rs/crossterm) : Pour la manipulation multiplateforme du terminal, l'activation du mode brut (Raw Mode), le contrôle du curseur et le nettoyage de l'écran.
-* [`rand`](https://github.com/rust-random/rand) : Utilisé pour l'algorithme de placement procédural de la flotte.
+## 📦 Dépendances
+
+* [`crossterm`](https://github.com/crossterm-rs/crossterm) : Pour la manipulation multiplateforme du terminal, l'activation du mode brut (Raw Mode), le contrôle du curseur et le nettoyage de l'écran afin de créer l'interface interactive (TUI).
+* [`rand`](https://github.com/rust-random/rand) : Utilisé pour la génération procédurale du placement de la flotte, la création aléatoire du code PIN sécurisé (4 chiffres) du salon, et le tirage au sort (pile ou face) de l'arbitre pour déterminer qui joue le premier tour.
+* [`rustls`](https://github.com/rustls/rustls) & [`rcgen`](https://github.com/rustls/rcgen) : Pour la génération de certificats à la volée et la mise en place du tunnel chiffré TCP (TLS 1.3).
