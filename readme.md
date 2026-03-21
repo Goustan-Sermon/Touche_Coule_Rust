@@ -12,6 +12,7 @@ Ce dépôt contient le code source d'un jeu classique de Bataille Navale implém
 * **Déploiement dynamique & Hologramme :** Placez votre flotte manuellement. Un navire "fantôme" vous permet de visualiser le placement et la rotation avant de valider. Une sécurité anti-débordement (clamping) empêche les placements invalides.
 * **Génération aléatoire de la flotte :** Envie de plonger directement dans l'action ? Optez pour le placement automatique pour déployer votre flotte instantanément et sans collision.
 * **Temps réel & Retours visuels :** Obtenez un retour immédiat sur vos tirs (`Plouf`, `Touché` ou `Coulé !`) avec une mise à jour dynamique de votre radar tactique.
+* **Tableau de Bord Stratégique (TUI Colorée) :** Une refonte visuelle complète utilisant des balises ANSI. Observez l'état de votre flotte et votre radar tactique de frappe **côte à côte** pour une immersion totale et une lisibilité instantanée des actions.
 
 ## 🚀 Comment y jouer ?
 
@@ -42,15 +43,15 @@ Si vous préférez compiler le jeu vous-même, assurez-vous d'avoir [Rust et Car
     * Choix `1` (**Manuel**) : Utilisez les **Flèches** pour déplacer le navire, **'R'** pour le faire pivoter, et **Entrée** pour valider.
     * Choix `2` (**Aléatoire**) : L'ordinateur déploie vos 5 navires de manière stratégique.
 4.  **Phase de Combat :**
-    * L'Hôte tire en premier.
+    * L'arbitre (le serveur) effectue un tirage au sort sécurisé pour déterminer aléatoirement quel Amiral a l'honneur de tirer en premier.
     * À votre tour, déplacez le curseur sur le radar avec les flèches et appuyez sur **Entrée** pour faire feu.
-    * La victoire est déclarée lorsqu'un joueur coule l'intégralité de la flotte adverse.
+    * La victoire est déclarée lorsqu'un joueur coule l'intégralité de la flotte adverse. En cas de déconnexion inattendue d'un joueur, la partie se termine proprement et signale la désertion.
 
 ## 🏗️ Architecture du Projet
 
 Le code source est organisé en trois modules principaux pour garantir une séparation claire des responsabilités :
 
-* `src/main.rs` : Point d'entrée de l'application. Gère la boucle de jeu principale, les entrées utilisateur (clavier en mode brut) et l'orchestration des différentes phases (menu, placement, combat).
+* `src/main.rs` : Point d'entrée de l'application. Gère la boucle de jeu principale, l'affichage interactif du double tableau de bord et les entrées clavier. Surtout, en mode Hôte, il agit comme **Serveur Autoritaire**, retenant les grilles en mémoire et arbitrant les tirs pour empêcher toute triche.
 * `src/modele.rs` : Définit les structures de données fondamentales et la logique métier (`Grille`, `Navire`, `Coordonnee`). Gère les règles de collision et le traitement des tirs.
 * `src/reseau.rs` : Implémente la couche réseau. Définit un protocole de communication textuel (`MessageReseau`) avec son parser, et gère l'ouverture des sockets TCP (`TcpListener` et `TcpStream`).
 
@@ -64,6 +65,9 @@ Ce projet a été conçu avec une approche "Security by Design", en traitant les
 * **Validation stricte des paquets :** Le *parser* réseau rejette systématiquement les commandes malformées, garantissant la stabilité du serveur face à des injections de données corrompues.
 * **Port Knocking Applicatif (Anti-Reconnaissance) :** Le port principal du jeu (3333) est masqué par défaut aux scanners réseau (comme `nmap`). Un "Gardien" multi-threadé écoute silencieusement une séquence de frappe spécifique sur des ports leurres (7777, 8888, 9999). Le véritable tunnel chiffré ne s'ouvre qu'après validation de cette séquence dynamique, empêchant toute tentative de connexion non sollicitée.
 * **Contrôle d'Accès & Fail2Ban (Anti-Bruteforce) :** Chaque salon est protégé par une authentification applicative via un code PIN à 4 chiffres généré aléatoirement. Le serveur intègre un registre dynamique (`HashMap`) qui agit comme un bouclier Fail2Ban : il bannit et rejette automatiquement les adresses IP après 3 tentatives d'authentification infructueuses, tout en maintenant le serveur en ligne et résilient.
+* **Serveur Autoritaire (Anti-Cheat) :** Abandon du modèle de confiance client ("Client-Trust"). En début de partie, les clients transfèrent de manière sécurisée la position de leur flotte à l'Hôte. C'est le serveur qui calcule les impacts et renvoie le verdict, rendant la falsification des dégâts (tricherie de type God Mode) mathématiquement impossible pour le client.
+* **Validation Stricte des Entrées (Input Validation) :** Les saisies sensibles, telles que l'adresse IP du serveur, sont analysées et validées formellement avant toute interaction réseau. Cela empêche les envois de paquets aveugles ou les requêtes DNS inutiles liées à des saisies corrompues.
+* **Résilience aux Déconnexions (Fail-Safe) :** Gestion gracieuse des fermetures inattendues de sockets TCP (`Broken Pipe` / Rage-quit). Le serveur intercepte les pertes de connexion sans déclencher de panique mémoire, libère les ports proprement et informe l'adversaire de la désertion.
 ## 📦 Dépendances
 
 * [`crossterm`](https://github.com/crossterm-rs/crossterm) : Pour la manipulation multiplateforme du terminal, l'activation du mode brut (Raw Mode), le contrôle du curseur et le nettoyage de l'écran.
