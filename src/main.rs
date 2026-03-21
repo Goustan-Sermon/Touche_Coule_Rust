@@ -279,8 +279,20 @@ fn main() {
         loop {
             if mon_tour {
                 // --- C'EST MON TOUR ---                       
-                // Afficher la grille et gerer les fleches
-                let cible = choisir_coordonnee_interactive(&ma_grille, &radar);
+                // Une boucle pour permettre d'envoyer plusieurs messages avant de tirer
+                let cible = loop {
+                    match choisir_action_interactive(&ma_grille, &radar) {
+                        ActionTour::Tir(coord) => break coord,
+                        ActionTour::Chat(msg) => {
+                          if envoyer_message(&mut *flux_tcp, &MessageReseau::Chat(msg.clone())).is_err() {
+                                println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a fui la bataille !");
+                              break 'partie;
+                            }
+                            println!("\x1b[1;32m[Message Envoyé]\x1b[0m");
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                    }
+                };
 
                 // On traduit la coordonnee pour l'affichage
                 let lettre = (b'A' + cible.x as u8) as char;
@@ -352,81 +364,93 @@ fn main() {
             } else {
                 println!("\n\x1b[1;36m[RÉSEAU]\x1b[0m En attente de l'attaque de \x1b[1m{}\x1b[0m...", nom_adversaire);
 
-                match recevoir_message(&mut flux_tcp) {
-                    Some(MessageReseau::Tir(coord)) => {
-                        nettoyer_ecran();
-                        let lettre = (b'A' + coord.x as u8) as char;
-                        println!("\n\x1b[1;31m[ALERTE]\x1b[0m Tir ennemi détecté en \x1b[1m{}{}\x1b[0m !", lettre, coord.y + 1);
+                // On boucle pour attraper d'eventuels messages avant le tir
+                let coord_ennemie = loop {
+                    match recevoir_message(&mut *flux_tcp) {
+                        Some(MessageReseau::Chat(msg)) => {
+                            // On affiche le message et on relance la boucle
+                            println!("\x1b[1;35m[💬 {}]\x1b[0m \x1b[3m{}\x1b[0m", nom_adversaire.to_uppercase(), msg);
+                        }
+                        Some(MessageReseau::Tir(coord)) => break Some(coord), // On a le tir on sort
+                        None => break None,
+                        _ => println!("\x1b[1;31m[ALERTE]\x1b[0m Message inattendu pendant le tour adverse."),
+                    }
+                };
 
-                        // --- LE SERVEUR EST LE SEUL JUGE ---
-                        if est_hote {
-                            // L'Hôte encaisse le tir, calcule et donne le verdict au client
-                            let resultat = ma_grille.tirer(coord);
-                            if ma_grille.flotte_coulee() {
-                                if envoyer_message(&mut *flux_tcp, &MessageReseau::RepFin).is_err() {
-                                    println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a fui la bataille !");
-                                    break 'partie;
-                                }
+                // 1. On traite la coordonnee recue
+                if let Some(coord) = coord_ennemie {
+                    nettoyer_ecran();
+                    let lettre = (b'A' + coord.x as u8) as char;
+                    println!("\n\x1b[1;31m[ALERTE]\x1b[0m Tir ennemi détecté en \x1b[1m{}{}\x1b[0m !", lettre, coord.y + 1);
+
+                    // --- LE SERVEUR EST LE SEUL JUGE ---
+                    if est_hote {
+                        // L'hote encaisse le tir calcule et donne le verdict au client
+                        let resultat = ma_grille.tirer(coord);
+                        if ma_grille.flotte_coulee() {
+                            if envoyer_message(&mut *flux_tcp, &MessageReseau::RepFin).is_err() {
+                                println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a fui la bataille !");
+                                break 'partie;
+                            }
+                            println!("\n\x1b[1;31m=========================================================================\x1b[0m");
+                            println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
+                            println!("\x1b[1;31m=========================================================================\x1b[0m\n");
+                            afficher_plateau_double(&ma_grille, &radar, None);
+                            break;
+                        } else {
+                            let reponse = match resultat { 
+                                ResultatTir::Aleau => {
+                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
+                                    MessageReseau::RepAleau
+                                },
+                                ResultatTir::Touche => {
+                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
+                                    MessageReseau::RepTouche
+                                },
+                                ResultatTir::Coule(nom) => {
+                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
+                                    MessageReseau::RepCoule(nom)
+                                },
+                                _ => MessageReseau::RepAleau,  
+                            };
+                            if envoyer_message(&mut *flux_tcp, &reponse).is_err() {
+                                println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
+                                break 'partie;
+                            }
+                        }
+                    } else {
+                        // Le Client encaisse le tir mais doit attendre le verdict de l'hote
+                        match recevoir_message(&mut *flux_tcp) {
+                            Some(MessageReseau::RepAleau) => {
+                                println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... L'ennemi a raté.\x1b[0m\n");
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Aleau;
+                            }
+                            Some(MessageReseau::RepTouche) => {
+                                println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Vous avez été touché !\x1b[0m\n");
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
+                            }
+                            Some(MessageReseau::RepCoule(nom)) => {
+                                println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mDÉSASTRE ! Votre {} a été coulé !\x1b[0m\n", nom);
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
+                            }
+                            Some(MessageReseau::RepFin) => {
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
                                 println!("\n\x1b[1;31m=========================================================================\x1b[0m");
                                 println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
                                 println!("\x1b[1;31m=========================================================================\x1b[0m\n");
                                 afficher_plateau_double(&ma_grille, &radar, None);
                                 break;
-                            } else {
-                                let reponse = match resultat { 
-                                    ResultatTir::Aleau => {
-                                        println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
-                                        MessageReseau::RepAleau
-                                    },
-                                    ResultatTir::Touche => {
-                                        println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
-                                        MessageReseau::RepTouche
-                                    },
-                                    ResultatTir::Coule(nom) => {
-                                        println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
-                                        MessageReseau::RepCoule(nom)
-                                    },
-                                    _ => MessageReseau::RepAleau,  
-                                };
-                                if envoyer_message(&mut *flux_tcp, &reponse).is_err() {
-                                    println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
-                                    break 'partie;
-                                }
                             }
-                        } else {
-                            // Le Client encaisse le tir, mais DOIT attendre le verdict de l'Hôte
-                            match recevoir_message(&mut *flux_tcp) {
-                                Some(MessageReseau::RepAleau) => {
-                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... L'ennemi a raté.\x1b[0m\n");
-                                    ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Aleau;
-                                }
-                                Some(MessageReseau::RepTouche) => {
-                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Vous avez été touché !\x1b[0m\n");
-                                    ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
-                                }
-                                Some(MessageReseau::RepCoule(nom)) => {
-                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mDÉSASTRE ! Votre {} a été coulé !\x1b[0m\n", nom);
-                                    ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
-                                }
-                                Some(MessageReseau::RepFin) => {
-                                    ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
-                                    println!("\n\x1b[1;31m=========================================================================\x1b[0m");
-                                    println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
-                                    println!("\x1b[1;31m=========================================================================\x1b[0m\n");
-                                    afficher_plateau_double(&ma_grille, &radar, None);
-                                    break;
-                                }
-                                _ => {}
-                            }
+                            _ => {}
                         }
-                        afficher_plateau_double(&ma_grille, &radar, None);
                     }
-                    None => {
-                        println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
-                        break 'partie;
-                    }
-                    _ => println!("\x1b[1;31m[ALERTE]\x1b[0m Message inattendu pendant le tour adverse."),
+                    afficher_plateau_double(&ma_grille, &radar, None);
+                } else {
+                    // La boucle d'ecoute a renvoye None
+                    println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
+                    break 'partie;
                 }
+                
                 mon_tour = true; // L'adversaire a fini
             }
         } // Fin de la boucle de combat
@@ -517,7 +541,12 @@ fn afficher_plateau_double(ma_grille: &Grille, radar: &Grille, curseur_radar: Op
     }
 }
 
-fn choisir_coordonnee_interactive(ma_grille: &Grille, radar: &Grille) -> Coordonnee {
+enum ActionTour {
+    Tir(Coordonnee),
+    Chat(String),
+}
+
+fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour {
     let mut curseur = Coordonnee { x: 0, y: 0 };
     let mut premiere_fois = true;
 
@@ -538,7 +567,7 @@ fn choisir_coordonnee_interactive(ma_grille: &Grille, radar: &Grille) -> Coordon
 
         println!("=========================================================================");
         println!("                              À VOTRE TOUR!                              ");
-        println!("                DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE                ");
+        println!("    FLÈCHES : Déplacer  |  ENTRÉE : Tirer  |  'C' : Envoyer un message   ");
         println!("=========================================================================\n");
         
         // On affiche le double tableau avec le curseur projete sur le radar
@@ -559,8 +588,20 @@ fn choisir_coordonnee_interactive(ma_grille: &Grille, radar: &Grille) -> Coordon
                             continue;
                         }
                         disable_raw_mode().unwrap();
-                        return curseur;
+                        return ActionTour::Tir(curseur);
                     }
+                    KeyCode::Char('c') | KeyCode::Char('C') => {
+                        disable_raw_mode().unwrap();
+                        print!("\n\x1b[1;35m[CANAL RADIO]\x1b[0m Transmission : ");
+                        io::stdout().flush().unwrap();
+                        let mut msg = String::new();
+                        io::stdin().read_line(&mut msg).unwrap();
+                        
+                        if !msg.trim().is_empty() {
+                            return ActionTour::Chat(msg.trim().to_string());
+                        }
+                    }
+                    
                     KeyCode::Esc | KeyCode::Char('q') => {
                         disable_raw_mode().unwrap();
                         std::process::exit(0);

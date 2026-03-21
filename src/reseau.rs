@@ -58,6 +58,7 @@ pub enum MessageReseau {
     FlotteOk,
     InfoTour(bool),
     Revanche(bool),
+    Chat(String),
 }
 
 impl MessageReseau {
@@ -108,6 +109,9 @@ impl MessageReseau {
             "REV" => {
                 Some(MessageReseau::Revanche(donnees == "OUI"))
             },
+            "CHAT" => {
+                Some(MessageReseau::Chat(donnees.to_string()))
+            },
             _ => None,
         }
     }
@@ -132,6 +136,7 @@ impl MessageReseau {
             MessageReseau::FlotteOk => "FLOTTE_OK:OK\n".to_string(),
             MessageReseau::InfoTour(a_toi) => format!("TOUR:{}\n", if *a_toi { "OUI" } else { "NON" }),
             MessageReseau::Revanche(oui) => format!("REV:{}\n", if *oui { "OUI" } else { "NON" }),
+            MessageReseau::Chat(msg) => format!("CHAT:{}\n", msg),
         }
     }
 }
