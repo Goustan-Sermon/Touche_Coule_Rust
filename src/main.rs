@@ -27,6 +27,10 @@ fn main() {
     io::stdin().read_line(&mut mon_nom).unwrap();
     let mon_nom = mon_nom.trim().to_string();
 
+    if mon_nom.is_empty() {
+        mon_nom = "Anonyme".to_string();
+    }
+
     let est_hote: bool;
     let code_secret: String;
     let mut ip_serveur = String::new();
@@ -207,25 +211,27 @@ fn main() {
             // Afficher la grille et gerer les fleches
             let cible = choisir_coordonnee_interactive(&ma_grille, &radar);
 
-            // Une fois qu'on a appuye sur Entree, on reaffiche proprement le radar pour voir oui on a tire 
-            println!("\n--- TIR VERROUILLÉ EN {:?} ---", cible);
+            // On traduit la coordonnee pour l'affichage
+            let lettre = (b'A' + cible.x as u8) as char;
+            let chiffre = cible.y + 1;
+            println!("\n[CIBLE] Verrouillage des missiles sur {}{}...", lettre, chiffre);
 
             // 1. On envoie la coordonnee a l'adversaire
             let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
-            println!(">>> Tir envoyé ! En attente du rapport de dégâts...");
+            println!("[RÉSEAU] Tir envoyé ! En attente du rapport de dégâts...");
 
             // 2. On attend sa reponse pour mettre a jour notre radar
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::RepAleau) => {
-                    println!("Résultat : Plouf... C'est dans l'eau.");
+                    println!("[RÉSULTAT] \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Aleau;
                 }
                 Some(MessageReseau::RepTouche) => {
-                    println!("Résultat : BOUM ! Vous avez touché un navire !");
+                    println!("[RÉSULTAT] \x1b[31mBOUM ! Vous avez touché un navire !\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepCoule(nom)) => {
-                    println!("Résultat : TOUCHÉ ET COULÉ ! Vous avez détruit le {} !", nom);
+                    println!("[RÉSULTAT] \x1b[31mTOUCHÉ ET COULÉ ! Vous avez détruit le {} !\x1b[0m\n", nom);
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepFin) => {
@@ -264,7 +270,7 @@ fn main() {
                         break; 
                     }
 
-                    // On affiche le résultat de l'impact en couleur et on prépare la réponse
+                    // On affiche le resultat de l'impact en couleur et on prepare la reponse
                     let reponse = match resultat {
                         ResultatTir::Aleau => {
                             println!("[RÉSULTAT] \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
