@@ -207,7 +207,69 @@ fn main() {
 
     println!("\nEn attente que l'Amiral {} termine son déploiement...", nom_adversaire);
     
-    let mut mon_tour = est_hote; 
+    println!("\nEn attente que l'Amiral {} termine son déploiement...", nom_adversaire);
+    
+    // NOUVEAU : L'Hôte prépare une grille secrète pour retenir la flotte du client
+    let mut grille_adversaire = Grille::new();
+
+    if est_hote {
+        println!("\x1b[1;36m[RÉSEAU]\x1b[0m Synchronisation : Réception de la flotte ennemie...");
+        loop {
+            match recevoir_message(&mut *flux_tcp) {
+                Some(MessageReseau::EnvoiNavire(nom, taille, x, y, ori)) => {
+                    let orientation = if ori == "H" { modele::Orientation::Horizontal } else { modele::Orientation::Vertical };
+                    let navire = Navire::new(&nom, taille, Coordonnee { x, y }, orientation);
+                    grille_adversaire.placer_navire(navire).unwrap();
+                }
+                Some(MessageReseau::FlotteOk) => {
+                    println!("\x1b[1;32m[SUCCÈS]\x1b[0m Flotte adverse verrouillée sur le serveur !");
+                    break;
+                }
+                _ => {}
+            }
+        }
+    } else {
+        println!("\x1b[1;36m[RÉSEAU]\x1b[0m Synchronisation : Envoi sécurisé de votre flotte au serveur...");
+        for navire in &ma_grille.navires {
+            let ori = match navire.orientation {
+                Orientation::Horizontal => "H",
+                Orientation::Vertical => "V",
+            };
+            let msg = MessageReseau::EnvoiNavire(navire.nom.clone(), navire.taille, navire.coord_depart.x, navire.coord_depart.y, ori.to_string());
+            envoyer_message(&mut *flux_tcp, &msg).unwrap();
+            
+            // ASTUCE RÉSEAU : Cette micro-pause empêche le protocole TCP de coller 
+            // tous les bateaux dans un seul paquet, ce qui saturerait notre BufReader !
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        envoyer_message(&mut *flux_tcp, &MessageReseau::FlotteOk).unwrap();
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    nettoyer_ecran();
+
+    // Tirage au sort pour savoir qui commence en premier
+    let mut mon_tour;
+    if est_hote {
+        mon_tour = rand::rng().random_bool(0.5);
+        
+        // Il informe le client
+        let msg_client = MessageReseau::InfoTour(!mon_tour); 
+        envoyer_message(&mut *flux_tcp, &msg_client).unwrap();
+    } else {
+        println!("\x1b[1;36m[RÉSEAU]\x1b[0m En attente du tirage au sort de l'arbitre...");
+        // Le client ecoute la decision
+        match recevoir_message(&mut *flux_tcp) {
+            Some(MessageReseau::InfoTour(a_moi)) => mon_tour = a_moi,
+            _ => mon_tour = false, // Securite par defaut
+        }
+    }
+
+    let nom_qui_commence = if mon_tour { mon_nom.clone() } else { nom_adversaire.clone() };
+    println!("\n\x1b[1;35m[ARBITRE]\x1b[0m Le sort a désigné l'Amiral {} pour lancer la première offensive !", nom_qui_commence.to_uppercase());
+    
+    // On laisse le temps de lire le message avant de lancer l'interface de combat
+    std::thread::sleep(std::time::Duration::from_secs(4));
 
     nettoyer_ecran();
 
@@ -226,25 +288,51 @@ fn main() {
             let chiffre = cible.y + 1;
             println!("\n\x1b[1;33m[CIBLE]\x1b[0m Verrouillage des missiles sur {}{}...", lettre, chiffre);
 
-            // 1. On envoie la coordonnee a l'adversaire
-            let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
+            if envoyer_message(&mut *flux_tcp, &MessageReseau::Tir(cible)).is_err() {
+                println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
+                break;
+            }
             println!("\x1b[1;36m[RÉSEAU]\x1b[0m Tir envoyé ! En attente du rapport de dégâts...");
 
-            // 2. On attend sa reponse pour mettre a jour notre radar
-            match recevoir_message(&mut flux_tcp) {
-                Some(MessageReseau::RepAleau) => {
+            // --- LE SERVEUR EST LE SEUL JUGE ---
+            let reponse_serveur = if est_hote {
+                // L'Hôte calcule l'impact en local sur la grille qu'il a reçue
+                let resultat = grille_adversaire.tirer(cible);
+                let rep = match resultat {
+                    ResultatTir::Aleau => MessageReseau::RepAleau,
+                    ResultatTir::Touche => MessageReseau::RepTouche,
+                    ResultatTir::Coule(nom) => MessageReseau::RepCoule(nom),
+                    _ => MessageReseau::RepAleau,
+                };
+                
+                let rep_finale = if grille_adversaire.flotte_coulee() { MessageReseau::RepFin } else { rep };
+                
+                // L'Hôte informe le client du résultat
+                if envoyer_message(&mut *flux_tcp, &rep_finale).is_err() {
+                    println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
+                    break;
+                }
+                rep_finale // L'Hôte s'auto-renvoie le résultat pour l'afficher
+            } else {
+                // Le client attend bêtement la décision du serveur
+                recevoir_message(&mut *flux_tcp).unwrap_or(MessageReseau::RepAleau)
+            };
+
+            // On utilise la réponse du serveur pour mettre à jour l'écran
+            match reponse_serveur {
+                MessageReseau::RepAleau => {
                     println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Aleau;
                 }
-                Some(MessageReseau::RepTouche) => {
+                MessageReseau::RepTouche => {
                     println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Vous avez touché un navire !\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
-                Some(MessageReseau::RepCoule(nom)) => {
+                MessageReseau::RepCoule(nom) => {
                     println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mTOUCHÉ ET COULÉ ! Vous avez détruit le {} !\x1b[0m\n", nom);
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
-                Some(MessageReseau::RepFin) => {
+                MessageReseau::RepFin => {
                     println!("\n\x1b[1;32m=========================================================================\x1b[0m");
                     println!("\x1b[1;32m           VICTOIRE TOTALE ! La flotte ennemie est détruite !            \x1b[0m");
                     println!("\x1b[1;32m=========================================================================\x1b[0m\n");
@@ -271,35 +359,64 @@ fn main() {
                     let lettre = (b'A' + coord.x as u8) as char;
                     println!("\n\x1b[1;31m[ALERTE]\x1b[0m Tir ennemi détecté en \x1b[1m{}{}\x1b[0m !", lettre, coord.y + 1);
 
-                    let resultat = ma_grille.tirer(coord);
-
-                    if ma_grille.flotte_coulee() {
-                        let _ = envoyer_message(&mut flux_tcp, &MessageReseau::RepFin);
-                        println!("\n\x1b[1;31m=========================================================================\x1b[0m");
-                        println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
-                        println!("\x1b[1;31m=========================================================================\x1b[0m\n");
-                        afficher_plateau_double(&ma_grille, &radar, None);
-                        break; 
+                    // --- LE SERVEUR EST LE SEUL JUGE ---
+                    if est_hote {
+                        // L'Hôte encaisse le tir, calcule et donne le verdict au client
+                        let resultat = ma_grille.tirer(coord);
+                        if ma_grille.flotte_coulee() {
+                            let _ = envoyer_message(&mut *flux_tcp, &MessageReseau::RepFin);
+                            println!("\n\x1b[1;31m=========================================================================\x1b[0m");
+                            println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
+                            println!("\x1b[1;31m=========================================================================\x1b[0m\n");
+                            afficher_plateau_double(&ma_grille, &radar, None);
+                        } else {
+                            let reponse = match resultat { 
+                                ResultatTir::Aleau => {
+                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
+                                    MessageReseau::RepAleau
+                                },
+                                ResultatTir::Touche => {
+                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
+                                    MessageReseau::RepTouche
+                                },
+                                ResultatTir::Coule(nom) => {
+                                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
+                                    MessageReseau::RepCoule(nom)
+                                },
+                                _ => MessageReseau::RepAleau,  
+                            };
+                            if envoyer_message(&mut *flux_tcp, &reponse).is_err() {
+                                println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
+                                break;
+                            }
+                        }
+                    } else {
+                        // Le Client encaisse le tir, mais DOIT attendre le verdict de l'Hôte
+                        match recevoir_message(&mut *flux_tcp) {
+                            Some(MessageReseau::RepAleau) => {
+                                println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... L'ennemi a raté.\x1b[0m\n");
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Aleau;
+                            }
+                            Some(MessageReseau::RepTouche) => {
+                                println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Vous avez été touché !\x1b[0m\n");
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
+                            }
+                            Some(MessageReseau::RepCoule(nom)) => {
+                                println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mDÉSASTRE ! Votre {} a été coulé !\x1b[0m\n", nom);
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
+                            }
+                            Some(MessageReseau::RepFin) => {
+                                ma_grille.cases[coord.y][coord.x].etat = modele::EtatCase::Touche;
+                                println!("\n\x1b[1;31m=========================================================================\x1b[0m");
+                                println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
+                                println!("\x1b[1;31m=========================================================================\x1b[0m\n");
+                                afficher_plateau_double(&ma_grille, &radar, None);
+                            }
+                            _ => {}
+                        }
                     }
-
-                    // On affiche le resultat de l'impact en couleur et on prepare la reponse
-                    let reponse = match resultat {
-                        ResultatTir::Aleau => {
-                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
-                            MessageReseau::RepAleau
-                        },
-                        ResultatTir::Touche => {
-                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
-                            MessageReseau::RepTouche
-                        },
-                        ResultatTir::Coule(nom) => {
-                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
-                            MessageReseau::RepCoule(nom)
-                        },
-                        _ => MessageReseau::RepAleau, 
-                    };
-
-                    let _ = envoyer_message(&mut flux_tcp, &reponse);
+                    println!("\n--- ÉTAT DE VOTRE FLOTTE ---");
+                    afficher_plateau_double(&ma_grille, &radar, None);
                 }
                 None => {
                     println!("L'adversaire s'est déconnecté.");

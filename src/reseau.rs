@@ -43,7 +43,6 @@ impl FluxJeu for Box<dyn FluxJeu> {
     }
 }
 // ---------------------------------
-
 #[derive(Debug, PartialEq)]
 pub enum MessageReseau {
     Hello(String, String),
@@ -54,6 +53,10 @@ pub enum MessageReseau {
     RepFin,
     RepAuthOk,
     RepAuthFail,
+    // NOUVEAU : Pour transférer la flotte
+    EnvoiNavire(String, usize, usize, usize, String), 
+    FlotteOk,
+    InfoTour(bool),
 }
 
 impl MessageReseau {
@@ -86,6 +89,21 @@ impl MessageReseau {
                     None 
                 }
             },
+            "NAV" => {
+                let parts: Vec<&str> = donnees.split(':').collect();
+                if parts.len() == 5 {
+                    let nom = parts[0].to_string();
+                    let taille = parts[1].parse().unwrap_or(0);
+                    let x = parts[2].parse().unwrap_or(0);
+                    let y = parts[3].parse().unwrap_or(0);
+                    let orientation = parts[4].to_string();
+                    Some(MessageReseau::EnvoiNavire(nom, taille, x, y, orientation))
+                } else { None }
+            },
+            "FLOTTE_OK" => Some(MessageReseau::FlotteOk),
+            "TOUR" => {
+                Some(MessageReseau::InfoTour(donnees == "OUI"))
+            },
             _ => None,
         }
     }
@@ -106,6 +124,9 @@ impl MessageReseau {
             MessageReseau::RepFin => "REP:FIN\n".to_string(),
             MessageReseau::RepAuthOk => "REP:AUTH_OK\n".to_string(),
             MessageReseau::RepAuthFail => "REP:AUTH_FAIL\n".to_string(),
+            MessageReseau::EnvoiNavire(n, t, x, y, o) => format!("NAV:{}:{}:{}:{}:{}\n", n, t, x, y, o),
+            MessageReseau::FlotteOk => "FLOTTE_OK:OK\n".to_string(),
+            MessageReseau::InfoTour(a_toi) => format!("TOUR:{}\n", if *a_toi { "OUI" } else { "NON" }),
         }
     }
 }
@@ -219,24 +240,32 @@ pub fn envoyer_message(flux: &mut dyn FluxJeu, message: &MessageReseau) -> Resul
 }
 
 pub fn recevoir_message(flux: &mut dyn FluxJeu) -> Option<MessageReseau> {
-
-    let mut reader = BufReader::new(flux).take(64); 
     let mut ligne = String::new();
+    let mut buffer = [0u8; 1]; // On lit 1 octet par 1 octet
+    let mut octets_lus = 0;
 
-    match reader.read_line(&mut ligne) {
-        Ok(0) => None, // La connexion a ete fermee proprement
-        Ok(_) => {
-            // si on a rempli les 64 octets et qu'il n'y a toujours pas de retour à la ligne c'est une attaque DoS ou un paquet corrompu 
-            if ligne.len() == 64 && !ligne.ends_with('\n') {
-                println!("ALERTE SÉCURITÉ : Tentative de Buffer Overflow détectée et bloquée !");
-                return None; // On rejette le paquet malveillant
+    loop {
+        match flux.read(&mut buffer) {
+            Ok(0) => return None, 
+            Ok(1) => {
+                let c = buffer[0] as char;
+                ligne.push(c);
+                octets_lus += 1;
+
+                if c == '\n' {
+                    break; 
+                }
+
+                // Securite Anti-DoS (Buffer Overflow)
+                if octets_lus >= 128 {
+                    println!("\x1b[1;31m[ALERTE SÉCURITÉ]\x1b[0m Paquet trop long, rejeté !");
+                    return None;
+                }
             }
-            
-            // Si tout va bien on parse le message normalement
-            MessageReseau::parser(ligne.trim())
+            _ => return None, // Autre erreur reseau
         }
-        Err(_) => None, // Erreur de lecture
     }
+    MessageReseau::parser(ligne.trim())
 }
 
 /// Genere un certificat auto-signe et une cle privee a la volee pour l'Hote
