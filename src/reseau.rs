@@ -112,21 +112,21 @@ impl MessageReseau {
 
 pub fn heberger_partie(port: &str) -> Option<Box<dyn FluxJeu>> {
     let adresse = format!("0.0.0.0:{}", port);
-    println!("[RÉSEAU] Ouverture du port {}...", port);
+    println!("\x1b[1;36m[RÉSEAU]\x1b[0m Ouverture du port {}...", port);
 
     let ecouteur = match TcpListener::bind(&adresse) {
         Ok(listener) => listener,
         Err(e) => {
-            println!("[RÉSEAU] Erreur : Impossible d'ouvrir le port {}. ({})", port, e);
+            println!("\x1b[1;36m[RÉSEAU]\x1b[0m Erreur : Impossible d'ouvrir le port {}. ({})", port, e);
             return None;
         }
     };
 
-    println!("[RÉSEAU] En attente d'un adversaire (En écoute sur {})...", adresse);
+    println!("\x1b[1;36m[RÉSEAU]\x1b[0m En attente d'un adversaire (En écoute sur {})...", adresse);
 
     match ecouteur.accept() {
         Ok((flux_tcp, adresse_client)) => {
-            println!("[RÉSEAU] Connexion TCP établie depuis l'IP : {}. Négociation TLS...", adresse_client);
+            println!("\x1b[1;36m[RÉSEAU]\x1b[0m Connexion TCP établie depuis l'IP : {}. Négociation TLS...", adresse_client);
             
             // On active le chiffrement TLS pour sécuriser la communication avec le client
             let (certs, key) = generer_certificat_serveur();
@@ -139,12 +139,12 @@ pub fn heberger_partie(port: &str) -> Option<Box<dyn FluxJeu>> {
             let conn = ServerConnection::new(Arc::new(config)).unwrap();
             let flux_tls = StreamOwned::new(conn, flux_tcp);
             
-            println!("[TLS] Tunnel chiffré établi avec succès !");
+            println!("\x1b[1;33m[TLS]\x1b[0m Tunnel chiffré établi avec succès !");
             // On retourne le flux masque derriere notre Trait
             Some(Box::new(flux_tls))
         }
         Err(e) => {
-            println!("[TLS] Erreur lors de la connexion du client : {}", e);
+            println!("\x1b[1;33m[TLS]\x1b[0m Erreur lors de la connexion du client : {}", e);
             None
         }
     }
@@ -154,7 +154,7 @@ pub fn rejoindre_partie(ip: &str, port: &str) -> Option<Box<dyn FluxJeu>> {
 
     // Port Knocking : Avant de tenter la connexion normale on doit d'abord frapper 
     // furtivement sur une serie de ports pour deverrouiller le vrai port de jeu
-    println!("[INFILTRATION] Exécution de la séquence de frappe furtive...");
+    println!("\x1b[1;35m[INFILTRATION]\x1b[0m Exécution de la séquence de frappe furtive...");
     let ports_secrets = [7777, 8888, 9999];
     
     for p in ports_secrets {
@@ -171,17 +171,17 @@ pub fn rejoindre_partie(ip: &str, port: &str) -> Option<Box<dyn FluxJeu>> {
         // arrivent bien dans le bon ordre sur le reseau
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    println!("[INFILTRATION] Séquence terminée, tentative d'accès au port réel...");
+    println!("\x1b[1;35m[INFILTRATION]\x1b[0m Séquence terminée, tentative d'accès au port réel...");
 
     // On attend que le Gardien du serveur ait le temps de nettoyer ses threads et de liberer le port de jeu
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     let adresse = format!("{}:{}", ip, port);
-    println!("[RÉSEAU] Tentative de connexion à l'Amiral adverse sur {}...", adresse);
+    println!("\x1b[1;36m[RÉSEAU]\x1b[0m Tentative de connexion à l'Amiral adverse sur {}...", adresse);
 
     match TcpStream::connect(&adresse) {
         Ok(flux_tcp) => {
-            println!("[RÉSEAU] Connexion TCP réussie ! Négociation du tunnel TLS...");
+            println!("\x1b[1;36m[RÉSEAU]\x1b[0m Connexion TCP réussie ! Négociation du tunnel TLS...");
 
             // On active le chiffrement TLS pour sécuriser la communication avec l'hote
             let config = ClientConfig::builder()
@@ -195,11 +195,11 @@ pub fn rejoindre_partie(ip: &str, port: &str) -> Option<Box<dyn FluxJeu>> {
             let conn = ClientConnection::new(Arc::new(config), server_name).unwrap();
             let flux_tls = StreamOwned::new(conn, flux_tcp);
 
-            println!("[TLS] Tunnel chiffré établi avec succès !");
+            println!("\x1b[1;33m[TLS]\x1b[0m Tunnel chiffré établi avec succès !");
             Some(Box::new(flux_tls))
         }
         Err(e) => {
-            println!("[RÉSEAU] Erreur : Impossible d'établir le contact ({}).", e);
+            println!("\x1b[1;36m[RÉSEAU]\x1b[0m Erreur : Impossible d'établir le contact ({}).", e);
             None
         }
     }
@@ -258,9 +258,9 @@ fn generer_certificat_serveur() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<
 
 /// Port Knocking : On ecoute sur 3 ports et bloque le programme tant que 
 /// la combinaison (7777 -> 8888 -> 9999) n'est pas effectuee dans le bon ordre
-pub fn attendre_port_knocking() {
-    println!("\n[GARDIEN] Activation du mode Furtif. Le port 3333 est masqué.");
-    println!("[GARDIEN] En attente du signal (Toc-Toc sur 7777, 8888, 9999)...");
+pub fn attendre_port_knocking() -> Result<(), String> {
+    println!("\n\x1b[1;35m[GARDIEN]\x1b[0m Activation du mode Furtif. Le port 3333 est masqué.");
+    println!("\x1b[1;35m[GARDIEN]\x1b[0m En attente du signal (Toc-Toc sur 7777, 8888, 9999)...");
 
     let (tx, rx) = mpsc::channel();
     let progression = Arc::new(Mutex::new(HashMap::new()));
@@ -269,15 +269,21 @@ pub fn attendre_port_knocking() {
     // flag d'arret partage entre tous les threads
     let stop_flag = Arc::new(AtomicBool::new(false));
 
-    for (etape, &port) in ports_secrets.iter().enumerate() {
+    let mut ecouteurs = Vec::new();
+    for &port in &ports_secrets {
+        match TcpListener::bind(format!("0.0.0.0:{}", port)) {
+            Ok(l) => ecouteurs.push(l),
+            Err(_) => return Err(format!("Le port {} est déjà utilisé. Avez-vous une autre partie en cours ?", port)),
+        }
+    }
+
+    for (etape, ecouteur) in ecouteurs.into_iter().enumerate() {
         let progression_clone = Arc::clone(&progression);
         let tx_clone = tx.clone();
         let stop_flag_clone = Arc::clone(&stop_flag);
         let etape_requise = etape as u8;
 
         thread::spawn(move || {
-            let ecouteur = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
-            
             // On passe l'ecouteur en mode non-bloquant
             // Au lieu de figer le thread en attendant une connexion il verifie en continu
             ecouteur.set_nonblocking(true).unwrap();
@@ -319,7 +325,8 @@ pub fn attendre_port_knocking() {
     // On laisse 100 millisecondes aux threads pour voir le flag s'eteindre et relacher les ports
     thread::sleep(Duration::from_millis(100));
     
-    println!("[GARDIEN] Séquence parfaite de {} ! Déverrouillage du vrai port de jeu...", ip_validee);
+    println!("\x1b[1;35m[GARDIEN]\x1b[0m Séquence parfaite de {} ! Déverrouillage du vrai port de jeu...", ip_validee);
+    Ok(())
 }
 
 // --- MODULE DE SECURITE POUR ACCEPTER LE CERTIFICAT AUTO-SIGNE ---

@@ -55,47 +55,63 @@ impl Grille {
         }
     }
 
-    pub fn afficher(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>, fantome: Option<&Navire>) {
-        print!("   "); 
+    pub fn vers_lignes(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>, fantome: Option<&Navire>) -> Vec<String> {
+        let mut lignes = Vec::new();
+
+        // Definition des couleurs ANSI
+        let color_eau = "\x1b[34m";    // Bleu
+        let color_bateau = "\x1b[32m"; // Vert
+        let color_touche = "\x1b[31m"; // Rouge
+        let color_aleau = "\x1b[90m";  // Gris fonce
+        let reset = "\x1b[0m";         // Reinitialiser la couleur
+
+        // Ligne d'entete
+        let mut entete = String::from("   ");
         for x in 0..TAILLE_GRILLE {
             let lettre = (b'A' + x as u8) as char;
-            print!(" {} ", lettre);
+            entete.push_str(&format!(" {} ", lettre));
         }
-        println!(); 
+        lignes.push(entete);
 
+        // Construction du plateau
         for y in 0..TAILLE_GRILLE {
-            print!("{:2} ", y + 1);
+            let mut ligne = format!("{:2} ", y + 1);
 
             for x in 0..TAILLE_GRILLE {
-                let symbole = match self.cases[y][x].etat {
-                    EtatCase::Vide => '~',
-                    EtatCase::Bateau => if cacher_bateaux { '~' } else { 'B' },
-                    EtatCase::Touche => 'X',
-                    EtatCase::Aleau => 'O',
+                let (char_symbole, couleur) = match self.cases[y][x].etat {
+                    EtatCase::Vide => ('~', color_eau),
+                    EtatCase::Bateau => if cacher_bateaux { ('~', color_eau) } else { ('B', color_bateau) },
+                    EtatCase::Touche => ('X', color_touche),
+                    EtatCase::Aleau => ('O', color_aleau),
                 };
 
-                // On regarde si on doit dessiner le fantome sur cette case
                 let est_fantome = match fantome {
                     Some(navire) => navire.occupe(Coordonnee { x, y }),
                     None => false,
                 };
 
-                // On regarde si le curseur simple est sur cette case
                 let est_cible = match curseur {
                     Some(c) => c.x == x && c.y == y,
                     None => false,
                 };
 
-                // L'ordre de priorité de l'affichage :
+                // Affichage SANS fond blanc, juste les crochets pour marquer la cible
                 if est_fantome {
-                    print!("[B]"); // L'hologramme du bateau en cours de placement 
+                    ligne.push_str(&format!("{}[B]{}", color_bateau, reset));
                 } else if est_cible {
-                    print!("[{}]", symbole); // Le curseur de tir classique
+                    ligne.push_str(&format!("{}[{}]{}", couleur, char_symbole, reset));
                 } else {
-                    print!(" {} ", symbole); // Case normale
+                    ligne.push_str(&format!(" {}{}{} ", couleur, char_symbole, reset));
                 }
             }
-            println!();
+            lignes.push(ligne);
+        }
+        lignes
+    }
+
+    pub fn afficher(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>, fantome: Option<&Navire>) {
+        for ligne in self.vers_lignes(cacher_bateaux, curseur, fantome) {
+            println!("{}", ligne);
         }
     }
 

@@ -25,10 +25,14 @@ fn main() {
     io::stdout().flush().unwrap();
     let mut mon_nom = String::new();
     io::stdin().read_line(&mut mon_nom).unwrap();
-    let mon_nom = mon_nom.trim().to_string();
+    let mut mon_nom = mon_nom.trim().to_string();
 
-    let est_hote;
-    let mut code_secret = String::new();
+    if mon_nom.is_empty() {
+        mon_nom = "Anonyme".to_string();
+    }
+
+    let est_hote: bool;
+    let code_secret: String;
     let mut ip_serveur = String::new();
     let mut tentatives_echouees: HashMap<IpAddr, u32> = HashMap::new();
 
@@ -66,11 +70,21 @@ fn main() {
                 break;
             }
             "2" => {
-                print!("Adresse IP du serveur : ");
-                io::stdout().flush().unwrap();
-                let mut ip = String::new();
-                io::stdin().read_line(&mut ip).unwrap();
-                ip_serveur = ip.trim().to_string(); // On sauvegarde l'IP
+                // Boucle de validation stricte de l'adresse IP
+                loop {
+                    print!("Adresse IP du serveur : ");
+                    io::stdout().flush().unwrap();
+                    let mut ip = String::new();
+                    io::stdin().read_line(&mut ip).unwrap();
+                    
+                    // On tente de convertir le texte en vraie adresse IP
+                    if ip.trim().parse::<IpAddr>().is_ok() {
+                        ip_serveur = ip.trim().to_string();
+                        break;
+                    } else {
+                        println!("\x1b[31m[ERREUR]\x1b[0m Format invalide. Veuillez entrer une adresse IPv4 ou IPv6 (ex: 127.0.0.1).\n");
+                    }
+                }
                 
                 print!("Code secret du salon : ");
                 io::stdout().flush().unwrap();
@@ -104,10 +118,10 @@ fn main() {
         
         // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre)
         let resultat_connexion = if est_hote {
-            // On bloque le programme ici tant que la sequence n'est pas tapee
-            attendre_port_knocking(); 
-            
-            // Une fois la sequence tapee on ouvre reellement le port 3333
+            if let Err(msg) = attendre_port_knocking() {
+                println!("\n\x1b[1;31m[ERREUR]\x1b[0m {}", msg);
+                std::process::exit(1);
+            }
             heberger_partie("3333")
         } else {
             rejoindre_partie(&ip_serveur, "3333")
@@ -117,12 +131,12 @@ fn main() {
         let mut flux = match resultat_connexion {
             Some(f) => f,
             None => {
-                if !est_hote {
-                    println!("Impossible de joindre le serveur. Vérifiez l'IP.");
-                    std::process::exit(1);
+                if est_hote {
+                    println!("\n\x1b[1;31m[ERREUR]\x1b[0m Impossible de créer le salon.");
+                } else {
+                    println!("\n\x1b[1;31m[ERREUR]\x1b[0m Impossible de joindre le serveur. Vérifiez l'IP.");
                 }
-                // Si l'hôte n'a pas pu établir le tunnel avec un client, il relance l'écoute
-                continue; 
+                std::process::exit(1);
             }
         };
 
@@ -133,18 +147,18 @@ fn main() {
             // Verification sur la liste noire avant de demander le code
             if let Some(&nb_echecs) = tentatives_echouees.get(&ip_client) {
                 if nb_echecs >= 3 {
-                    println!("[BAN] Tentative de connexion bloquée pour {}", ip_client);
+                    println!("\x1b[1;31m[BAN]\x1b[0m Tentative de connexion bloquée pour {}", ip_client);
                     let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     continue; // On refuse la connexion et on retourne au menu d'attente pour le prochain client
                 }
             }
 
-            println!("[AUTH] En attente de l'authentification de {}...", ip_client);
+            println!("\x1b[1;34m[AUTH]\x1b[0m En attente de l'authentification de {}...", ip_client);
             
             match recevoir_message(&mut *flux) {
                 Some(MessageReseau::Hello(nom_client, code_client)) => {
                     if code_client == code_secret {
-                        println!("[SUCCÈS] Authentification réussie pour {}.", nom_client);
+                        println!("\x1b[1;32m[SUCCÈS]\x1b[0m Authentification réussie pour {}.", nom_client);
                         tentatives_echouees.remove(&ip_client); // On efface ses erreurs precedentes en cas de succes
                         
                         envoyer_message(&mut *flux, &MessageReseau::RepAuthOk).unwrap();
@@ -157,11 +171,11 @@ fn main() {
                         // ECHEC : Ajout à la liste noire
                         let n = tentatives_echouees.entry(ip_client).or_insert(0);
                         *n += 1;
-                        println!("[ALERTE] Mauvais code ({}/3) de {}", *n, ip_client);
+                        println!("\x1b[1;31m[ALERTE]\x1b[0m Mauvais code ({}/3) de {}", *n, ip_client);
                         let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     }
                 }
-                _ => println!("[ALERTE] Déconnexion inattendue pendant l'authentification."),
+                _ => println!("\x1b[1;31m[ALERTE]\x1b[0m Déconnexion inattendue pendant l'authentification."),
             }
         } else {
             // Logique du Client
@@ -170,20 +184,20 @@ fn main() {
             
             match recevoir_message(&mut *flux) {
                 Some(MessageReseau::RepAuthOk) => {
-                    println!("[SUCCÈS] Accès autorisé !");
+                    println!("\x1b[1;32m[SUCCÈS]\x1b[0m Accès autorisé !");
                     if let Some(MessageReseau::Hello(nom_hote, _)) = recevoir_message(&mut *flux) {
                         break (flux, nom_hote); // Succes pour le client aussi
                     }
                 }
                 _ => {
-                    println!("[BAN] Le code de salon est incorrect ou vous êtes banni.");
+                    println!("\x1b[1;31m[BAN]\x1b[0m Le code de salon est incorrect ou vous êtes banni.");
                     std::process::exit(1); // Le client ferme son jeu
                 }
             }
         }
     };
 
-    println!("\n[ALLIANCE] Connexion sécurisée avec l'Amiral {} !\n", nom_adversaire.to_uppercase());
+    println!("\n\x1b[1;32m[ALLIANCE]\x1b[0m Connexion sécurisée avec l'Amiral {} !\n", nom_adversaire.to_uppercase());
 
     // 4. La phase de placement (Chacun le fait de son cote localement)
     let mut ma_grille = Grille::new();
@@ -195,55 +209,56 @@ fn main() {
     
     let mut mon_tour = est_hote; 
 
-    println!("\n=====================================");
-    println!("          DÉBUT DU COMBAT !          ");
-    println!("=====================================");
+    nettoyer_ecran();
+
+    println!("\n=========================================================================");
+    println!("                            DÉBUT DU COMBAT !                            ");
+    println!("=========================================================================");
 
     loop {
         if mon_tour {
-            // --- C'EST MON TOUR ---
-            println!("\n=====================================");
-            println!("           À VOTRE TOUR !            ");
-            println!("=====================================");
-            
+            // --- C'EST MON TOUR ---                       
             // Afficher la grille et gerer les fleches
-            let cible = choisir_coordonnee_interactive(&radar, false);
+            let cible = choisir_coordonnee_interactive(&ma_grille, &radar);
 
-            // Une fois qu'on a appuye sur Entree, on reaffiche proprement le radar pour voir oui on a tire 
-            println!("\n--- TIR VERROUILLÉ EN {:?} ---", cible);
-            radar.afficher(false, None, None);
+            // On traduit la coordonnee pour l'affichage
+            let lettre = (b'A' + cible.x as u8) as char;
+            let chiffre = cible.y + 1;
+            println!("\n\x1b[1;33m[CIBLE]\x1b[0m Verrouillage des missiles sur {}{}...", lettre, chiffre);
 
             // 1. On envoie la coordonnee a l'adversaire
             let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
-            println!(">>> Tir envoyé ! En attente du rapport de dégâts...");
+            println!("\x1b[1;36m[RÉSEAU]\x1b[0m Tir envoyé ! En attente du rapport de dégâts...");
 
             // 2. On attend sa reponse pour mettre a jour notre radar
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::RepAleau) => {
-                    println!("Résultat : Plouf... C'est dans l'eau.");
+                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Aleau;
                 }
                 Some(MessageReseau::RepTouche) => {
-                    println!("Résultat : BOUM ! Vous avez touché un navire !");
+                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Vous avez touché un navire !\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepCoule(nom)) => {
-                    println!("Résultat : TOUCHÉ ET COULÉ ! Vous avez détruit le {} !", nom);
+                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mTOUCHÉ ET COULÉ ! Vous avez détruit le {} !\x1b[0m\n", nom);
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepFin) => {
-                    println!("\n=================================================");
-                    println!("VICTOIRE TOTALE ! La flotte ennemie est détruite !");
-                    println!("=================================================");
+                    println!("\n\x1b[1;32m=========================================================================\x1b[0m");
+                    println!("\x1b[1;32m           VICTOIRE TOTALE ! La flotte ennemie est détruite !            \x1b[0m");
+                    println!("\x1b[1;32m=========================================================================\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
-                    radar.afficher(false, None, None);
+                    afficher_plateau_double(&ma_grille, &radar, None);
                     break; // Fin du jeu 
                 }
                 _ => println!("Erreur réseau inattendue."),
             }
             
-            println!("\n--- RADAR MIS À JOUR ---");
-            radar.afficher(false, None, None); 
+            println!("=========================================================================");
+            println!("                            RADAR MIS À JOUR                            ");
+            println!("=========================================================================\n");
+            afficher_plateau_double(&ma_grille, &radar, None);
             
             mon_tour = false; // Fin de mon tour
 
@@ -253,36 +268,38 @@ fn main() {
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::Tir(coord)) => {
                     nettoyer_ecran();
-                    // On traduit la coordonnee pour l'affichage (ex: x=1 -> 'B')
                     let lettre = (b'A' + coord.x as u8) as char;
-                    println!("ALERTE ! Tir ennemi détecté en {}{} !", lettre, coord.y + 1);
+                    println!("\n\x1b[1;31m[ALERTE]\x1b[0m Tir ennemi détecté en \x1b[1m{}{}\x1b[0m !", lettre, coord.y + 1);
 
-                    // On encaisse le tir sur notre vraie grille
                     let resultat = ma_grille.tirer(coord);
 
-                    // On verifie si ce tir nous a acheve
                     if ma_grille.flotte_coulee() {
                         let _ = envoyer_message(&mut flux_tcp, &MessageReseau::RepFin);
-                        println!("\n=================================================");
-                        println!("  DÉFAITE... Toute votre flotte a été anéantie.  ");
-                        println!("=================================================");
-                        ma_grille.afficher(false, None, None);
-                        break; // Fin du jeu 
+                        println!("\n\x1b[1;31m=========================================================================\x1b[0m");
+                        println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
+                        println!("\x1b[1;31m=========================================================================\x1b[0m\n");
+                        afficher_plateau_double(&ma_grille, &radar, None);
+                        break; 
                     }
 
-                    // Sinon on renvoie le résultat normal a l'adversaire
+                    // On affiche le resultat de l'impact en couleur et on prepare la reponse
                     let reponse = match resultat {
-                        ResultatTir::Aleau => MessageReseau::RepAleau,
-                        ResultatTir::Touche => MessageReseau::RepTouche,
-                        ResultatTir::Coule(nom) => MessageReseau::RepCoule(nom),
-                        // Si on tire deux fois au meme endroit ou hors limite on dit "A l'eau" pour simplifier la logique reseau
+                        ResultatTir::Aleau => {
+                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
+                            MessageReseau::RepAleau
+                        },
+                        ResultatTir::Touche => {
+                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
+                            MessageReseau::RepTouche
+                        },
+                        ResultatTir::Coule(nom) => {
+                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
+                            MessageReseau::RepCoule(nom)
+                        },
                         _ => MessageReseau::RepAleau, 
                     };
 
                     let _ = envoyer_message(&mut flux_tcp, &reponse);
-                    
-                    println!("\n--- ÉTAT DE VOTRE FLOTTE ---");
-                    ma_grille.afficher(false, None, None); // On regarde les degats
                 }
                 None => {
                     println!("L'adversaire s'est déconnecté.");
@@ -299,40 +316,51 @@ fn afficher_guide() {
     let mut terminal = io::stdout();
     execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
 
-    println!("===========================================================");
-    println!("                  GUIDE DE L'AMIRAL                        ");
-    println!("===========================================================\n");
+    println!("\x1b[1;36m===========================================================\x1b[0m");
+    println!("\x1b[1;36m                  GUIDE DE L'AMIRAL                        \x1b[0m");
+    println!("\x1b[1;36m===========================================================\x1b[0m\n");
     
-    println!(" --- CONNEXION RÉSEAU & ADRESSE IP ---");
+    println!("\x1b[1;34m --- CONNEXION RÉSEAU & ADRESSE IP ---\x1b[0m");
     println!("L'Hôte doit communiquer son adresse IP locale au joueur qui le rejoint.");
-    println!("  - Sous Windows : Ouvrez l'invite de commande et tapez 'ipconfig' (cherchez l'adresse IPv4).");
-    println!("  - Sous Linux/Mac (ou WSL) : Ouvrez le terminal et tapez 'hostname -I' ou 'ip a'.");
-    println!("  (Astuce : Tapez '127.0.0.1' pour jouer contre vous-même sur le même PC !)\n");
+    println!("  - Sous \x1b[1mWindows\x1b[0m : Ouvrez l'invite de commande et tapez '\x1b[1;33mipconfig\x1b[0m' (cherchez l'adresse IPv4).");
+    println!("  - Sous \x1b[1mLinux/Mac\x1b[0m : Ouvrez le terminal et tapez '\x1b[1;33mhostname -I\x1b[0m' ou '\x1b[1;33mip a\x1b[0m'.");
+    println!("  (\x1b[35mAstuce\x1b[0m : Tapez '\x1b[1;33m127.0.0.1\x1b[0m' pour jouer contre vous-même sur le même PC !)\n");
 
-    println!(" --- COMMANDES DE JEU ---");
-    println!("  - FLÈCHES : Déplacer le curseur de ciblage ou votre bateau.");
-    println!("  - TOUCHE 'R' : Faire pivoter le navire lors du déploiement.");
-    println!("  - ENTRÉE : Valider un tir ou confirmer le placement d'un navire.\n");
+    println!("\x1b[1;34m --- COMMANDES DE JEU ---\x1b[0m");
+    println!("  - \x1b[1;33mFLÈCHES\x1b[0m : Déplacer le curseur de ciblage ou votre bateau.");
+    println!("  - \x1b[1;33mTOUCHE 'R'\x1b[0m : Faire pivoter le navire lors du déploiement.");
+    println!("  - \x1b[1;33mENTRÉE\x1b[0m : Valider un tir ou confirmer le placement d'un navire.\n");
 
-    println!(" --- DÉROULEMENT D'UN TOUR ---");
-    println!("  1. C'est votre tour : Vous visez sur le radar et tirez.");
-    println!("  2. Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).");
-    println!("  3. L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.");
-    println!("  4. Les rôles s'inversent ! Le suspense est total.\n");
+    println!("\x1b[1;34m --- DÉROULEMENT D'UN TOUR ---\x1b[0m");
+    println!("  \x1b[1;32m1.\x1b[0m C'est votre tour : Vous visez sur le radar et tirez.");
+    println!("  \x1b[1;32m2.\x1b[0m Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).");
+    println!("  \x1b[1;32m3.\x1b[0m L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.");
+    println!("  \x1b[1;32m4.\x1b[0m Les rôles s'inversent ! Le suspense est total.\n");
 
-    println!(" --- LÉGENDE DU RADAR ---");
-    println!("  [~] : Eau inexplorée        [O] : Tir raté (Plouf !)");
-    println!("  [B] : Vos navires           [X] : Navire touché !");
+    println!("\x1b[1;34m --- LÉGENDE DU RADAR ---\x1b[0m");
+    println!("  [\x1b[34m~\x1b[0m] : Eau inexplorée        [\x1b[90mO\x1b[0m] : Tir raté (Plouf !)");
+    println!("  [\x1b[32mB\x1b[0m] : Vos navires           [\x1b[31mX\x1b[0m] : Navire touché !");
 
-    println!("\n===========================================================");
-    println!("Appuyez sur ENTRÉE pour retourner au Centre de Commandement...");
+    println!("\n\x1b[1;36m===========================================================\x1b[0m");
+    println!("Appuyez sur \x1b[1;33mENTRÉE\x1b[0m pour retourner au Centre de Commandement...");
     
     let mut attente = String::new();
     io::stdin().read_line(&mut attente).unwrap();
 }
 
-/// Nouvelle fonction remplacant l'ancienne saisie textuelle ("B2")
-fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coordonnee {
+fn afficher_plateau_double(ma_grille: &Grille, radar: &Grille, curseur_radar: Option<Coordonnee>) {
+    let lignes_flotte = ma_grille.vers_lignes(false, None, None);
+    let lignes_radar = radar.vers_lignes(true, curseur_radar, None);
+
+    println!("        ÉTAT DE VOTRE FLOTTE                       RADAR TACTIQUE        ");
+    println!("=========================================================================");
+    
+    for (g, d) in lignes_flotte.iter().zip(lignes_radar.iter()) {
+        println!("{}   |   {}", g, d);
+    }
+}
+
+fn choisir_coordonnee_interactive(ma_grille: &Grille, radar: &Grille) -> Coordonnee {
     let mut curseur = Coordonnee { x: 0, y: 0 };
     let mut premiere_fois = true;
 
@@ -341,22 +369,23 @@ fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coor
         let mut terminal = stdout();
         
         if premiere_fois {
-            premiere_fois = false; // La premiere fois on affiche normalement
+            premiere_fois = false;
         } else {
-            // Les fois suivantes on remonte de 15 lignes et on efface juste vers le bas pour redessiner proprement
             execute!(
                 terminal, 
-                cursor::MoveUp(15), 
+                cursor::MoveUp(18), 
                 cursor::MoveToColumn(0), 
                 Clear(ClearType::FromCursorDown)
             ).unwrap();
         }
+
+        println!("=========================================================================");
+        println!("                              À VOTRE TOUR!                              ");
+        println!("                DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE                ");
+        println!("=========================================================================\n");
         
-        println!("=================================================");
-        println!("    DÉPLACEZ LE CURSEUR ET APPUYEZ SUR ENTRÉE    ");
-        println!("=================================================\n");
-        
-        grille.afficher(cacher_bateaux, Some(curseur), None);
+        // On affiche le double tableau avec le curseur projete sur le radar
+        afficher_plateau_double(ma_grille, radar, Some(curseur));
         
         enable_raw_mode().unwrap();
 
@@ -368,7 +397,7 @@ fn choisir_coordonnee_interactive(grille: &Grille, cacher_bateaux: bool) -> Coor
                     KeyCode::Left => { if curseur.x > 0 { curseur.x -= 1; } }
                     KeyCode::Right => { if curseur.x < TAILLE_GRILLE - 1 { curseur.x += 1; } }
                     KeyCode::Enter => {
-                        let etat_case = &grille.cases[curseur.y][curseur.x].etat;
+                        let etat_case = &radar.cases[curseur.y][curseur.x].etat;
                         if *etat_case == modele::EtatCase::Touche || *etat_case == modele::EtatCase::Aleau {
                             continue;
                         }
