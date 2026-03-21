@@ -369,7 +369,7 @@ fn main() {
                     match recevoir_message(&mut *flux_tcp) {
                         Some(MessageReseau::Chat(msg)) => {
                             // On affiche le message et on relance la boucle
-                            println!("\x1b[1;35m[💬 {}]\x1b[0m \x1b[3m{}\x1b[0m", nom_adversaire.to_uppercase(), msg);
+                            println!("\x1b[1;35m[{}]\x1b[0m \x1b[3m{}\x1b[0m", nom_adversaire.to_uppercase(), msg);
                         }
                         Some(MessageReseau::Tir(coord)) => break Some(coord), // On a le tir on sort
                         None => break None,
@@ -547,6 +547,12 @@ enum ActionTour {
 }
 
 fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour {
+
+    // On lit et on jette toutes les touches qui ont ete pressees pendant le tour de l'adversaire
+    while crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
+        let _ = crossterm::event::read().unwrap();
+    }
+
     let mut curseur = Coordonnee { x: 0, y: 0 };
     let mut premiere_fois = true;
 
@@ -567,7 +573,7 @@ fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour 
 
         println!("=========================================================================");
         println!("                              À VOTRE TOUR!                              ");
-        println!("    FLÈCHES : Déplacer  |  ENTRÉE : Tirer  |  'C' : Envoyer un message   ");
+        println!("   FLÈCHES : Déplacer | ENTRÉE : Tirer | 'C' : Message | 'Q' : Quitter   ");
         println!("=========================================================================\n");
         
         // On affiche le double tableau avec le curseur projete sur le radar
@@ -595,13 +601,18 @@ fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour 
                         print!("\n\x1b[1;35m[CANAL RADIO]\x1b[0m Transmission : ");
                         io::stdout().flush().unwrap();
                         let mut msg = String::new();
-                        io::stdin().read_line(&mut msg).unwrap();
-                        
-                        if !msg.trim().is_empty() {
-                            return ActionTour::Chat(msg.trim().to_string());
+                        match io::stdin().read_line(&mut msg) {
+                            Ok(_) => {
+                                if !msg.trim().is_empty() {
+                                    return ActionTour::Chat(msg.trim().to_string());
+                                }
+                            }
+                            Err(_) => {
+                                println!("\x1b[1;31m[ERREUR]\x1b[0m Saisie invalide ou caractère non supporté.");
+                                std::thread::sleep(std::time::Duration::from_secs(2));
+                            }
                         }
                     }
-                    
                     KeyCode::Esc | KeyCode::Char('q') => {
                         disable_raw_mode().unwrap();
                         std::process::exit(0);
