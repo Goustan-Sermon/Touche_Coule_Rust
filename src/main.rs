@@ -280,16 +280,20 @@ fn main() {
             if mon_tour {
                 // --- C'EST MON TOUR ---                       
                 // Une boucle pour permettre d'envoyer plusieurs messages avant de tirer
+                // NOUVEAU : Une boucle pour permettre d'envoyer plusieurs messages avant de tirer
                 let cible = loop {
                     match choisir_action_interactive(&ma_grille, &radar) {
                         ActionTour::Tir(coord) => break coord,
                         ActionTour::Chat(msg) => {
-                          if envoyer_message(&mut *flux_tcp, &MessageReseau::Chat(msg.clone())).is_err() {
+                            if envoyer_message(&mut *flux_tcp, &MessageReseau::Chat(msg.clone())).is_err() {
                                 println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a fui la bataille !");
-                              break 'partie;
+                                break 'partie;
                             }
                             println!("\x1b[1;32m[Message Envoyé]\x1b[0m");
                             std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                        ActionTour::Quitter => {
+                            break 'partie; 
                         }
                     }
                 };
@@ -544,14 +548,18 @@ fn afficher_plateau_double(ma_grille: &Grille, radar: &Grille, curseur_radar: Op
 enum ActionTour {
     Tir(Coordonnee),
     Chat(String),
+    Quitter,
 }
 
 fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour {
-
-    // On lit et on jette toutes les touches qui ont ete pressees pendant le tour de l'adversaire
-    while crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
+    // Securite anti ghosting
+    enable_raw_mode().unwrap();
+    
+    while crossterm::event::poll(std::time::Duration::from_millis(50)).unwrap() {
         let _ = crossterm::event::read().unwrap();
     }
+    
+    disable_raw_mode().unwrap();
 
     let mut curseur = Coordonnee { x: 0, y: 0 };
     let mut premiere_fois = true;
@@ -565,13 +573,13 @@ fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour 
         } else {
             execute!(
                 terminal, 
-                cursor::MoveUp(18), 
+                cursor::MoveUp(19), 
                 cursor::MoveToColumn(0), 
                 Clear(ClearType::FromCursorDown)
             ).unwrap();
         }
 
-        println!("=========================================================================");
+        println!("\n=========================================================================");
         println!("                              À VOTRE TOUR!                              ");
         println!("   FLÈCHES : Déplacer | ENTRÉE : Tirer | 'C' : Message | 'Q' : Quitter   ");
         println!("=========================================================================\n");
@@ -613,9 +621,9 @@ fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour 
                             }
                         }
                     }
-                    KeyCode::Esc | KeyCode::Char('q') => {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') => {
                         disable_raw_mode().unwrap();
-                        std::process::exit(0);
+                        return ActionTour::Quitter;
                     }
                     _ => {}
                 }
