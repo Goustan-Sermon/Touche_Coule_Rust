@@ -269,7 +269,7 @@ fn main() {
                 Some(MessageReseau::Tir(coord)) => {
                     nettoyer_ecran();
                     let lettre = (b'A' + coord.x as u8) as char;
-                    println!("\n[ALERTE] Tir ennemi détecté en {}{} !", lettre, coord.y + 1);
+                    println!("\n\x1b[1;31m[ALERTE]\x1b[0m Tir ennemi détecté en \x1b[1m{}{}\x1b[0m !", lettre, coord.y + 1);
 
                     let resultat = ma_grille.tirer(coord);
 
@@ -285,15 +285,15 @@ fn main() {
                     // On affiche le resultat de l'impact en couleur et on prepare la reponse
                     let reponse = match resultat {
                         ResultatTir::Aleau => {
-                            println!("[RÉSULTAT] \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
+                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
                             MessageReseau::RepAleau
                         },
                         ResultatTir::Touche => {
-                            println!("[RÉSULTAT] \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
+                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Un de vos navires a été touché !\x1b[0m\n");
                             MessageReseau::RepTouche
                         },
                         ResultatTir::Coule(nom) => {
-                            println!("[RÉSULTAT] \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
+                            println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mATTAQUE DÉVASTATRICE ! Votre {} a été coulé !\x1b[0m\n", nom);
                             MessageReseau::RepCoule(nom)
                         },
                         _ => MessageReseau::RepAleau, 
@@ -316,33 +316,33 @@ fn afficher_guide() {
     let mut terminal = io::stdout();
     execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
 
-    println!("===========================================================");
-    println!("                  GUIDE DE L'AMIRAL                        ");
-    println!("===========================================================\n");
+    println!("\x1b[1;36m===========================================================\x1b[0m");
+    println!("\x1b[1;36m                  GUIDE DE L'AMIRAL                        \x1b[0m");
+    println!("\x1b[1;36m===========================================================\x1b[0m\n");
     
-    println!(" --- CONNEXION RÉSEAU & ADRESSE IP ---");
+    println!("\x1b[1;34m --- CONNEXION RÉSEAU & ADRESSE IP ---\x1b[0m");
     println!("L'Hôte doit communiquer son adresse IP locale au joueur qui le rejoint.");
-    println!("  - Sous Windows : Ouvrez l'invite de commande et tapez 'ipconfig' (cherchez l'adresse IPv4).");
-    println!("  - Sous Linux/Mac (ou WSL) : Ouvrez le terminal et tapez 'hostname -I' ou 'ip a'.");
-    println!("  (Astuce : Tapez '127.0.0.1' pour jouer contre vous-même sur le même PC !)\n");
+    println!("  - Sous \x1b[1mWindows\x1b[0m : Ouvrez l'invite de commande et tapez '\x1b[1;33mipconfig\x1b[0m' (cherchez l'adresse IPv4).");
+    println!("  - Sous \x1b[1mLinux/Mac\x1b[0m : Ouvrez le terminal et tapez '\x1b[1;33mhostname -I\x1b[0m' ou '\x1b[1;33mip a\x1b[0m'.");
+    println!("  (\x1b[35mAstuce\x1b[0m : Tapez '\x1b[1;33m127.0.0.1\x1b[0m' pour jouer contre vous-même sur le même PC !)\n");
 
-    println!(" --- COMMANDES DE JEU ---");
-    println!("  - FLÈCHES : Déplacer le curseur de ciblage ou votre bateau.");
-    println!("  - TOUCHE 'R' : Faire pivoter le navire lors du déploiement.");
-    println!("  - ENTRÉE : Valider un tir ou confirmer le placement d'un navire.\n");
+    println!("\x1b[1;34m --- COMMANDES DE JEU ---\x1b[0m");
+    println!("  - \x1b[1;33mFLÈCHES\x1b[0m : Déplacer le curseur de ciblage ou votre bateau.");
+    println!("  - \x1b[1;33mTOUCHE 'R'\x1b[0m : Faire pivoter le navire lors du déploiement.");
+    println!("  - \x1b[1;33mENTRÉE\x1b[0m : Valider un tir ou confirmer le placement d'un navire.\n");
 
-    println!(" --- DÉROULEMENT D'UN TOUR ---");
-    println!("  1. C'est votre tour : Vous visez sur le radar et tirez.");
-    println!("  2. Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).");
-    println!("  3. L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.");
-    println!("  4. Les rôles s'inversent ! Le suspense est total.\n");
+    println!("\x1b[1;34m --- DÉROULEMENT D'UN TOUR ---\x1b[0m");
+    println!("  \x1b[1;32m1.\x1b[0m C'est votre tour : Vous visez sur le radar et tirez.");
+    println!("  \x1b[1;32m2.\x1b[0m Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).");
+    println!("  \x1b[1;32m3.\x1b[0m L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.");
+    println!("  \x1b[1;32m4.\x1b[0m Les rôles s'inversent ! Le suspense est total.\n");
 
-    println!(" --- LÉGENDE DU RADAR ---");
+    println!("\x1b[1;34m --- LÉGENDE DU RADAR ---\x1b[0m");
     println!("  [\x1b[34m~\x1b[0m] : Eau inexplorée        [\x1b[90mO\x1b[0m] : Tir raté (Plouf !)");
     println!("  [\x1b[32mB\x1b[0m] : Vos navires           [\x1b[31mX\x1b[0m] : Navire touché !");
 
-    println!("\n===========================================================");
-    println!("Appuyez sur ENTRÉE pour retourner au Centre de Commandement...");
+    println!("\n\x1b[1;36m===========================================================\x1b[0m");
+    println!("Appuyez sur \x1b[1;33mENTRÉE\x1b[0m pour retourner au Centre de Commandement...");
     
     let mut attente = String::new();
     io::stdin().read_line(&mut attente).unwrap();
