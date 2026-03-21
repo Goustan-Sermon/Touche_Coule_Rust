@@ -57,6 +57,7 @@ pub enum MessageReseau {
     EnvoiNavire(String, usize, usize, usize, String), 
     FlotteOk,
     InfoTour(bool),
+    Revanche(bool),
 }
 
 impl MessageReseau {
@@ -104,6 +105,9 @@ impl MessageReseau {
             "TOUR" => {
                 Some(MessageReseau::InfoTour(donnees == "OUI"))
             },
+            "REV" => {
+                Some(MessageReseau::Revanche(donnees == "OUI"))
+            },
             _ => None,
         }
     }
@@ -127,6 +131,7 @@ impl MessageReseau {
             MessageReseau::EnvoiNavire(n, t, x, y, o) => format!("NAV:{}:{}:{}:{}:{}\n", n, t, x, y, o),
             MessageReseau::FlotteOk => "FLOTTE_OK:OK\n".to_string(),
             MessageReseau::InfoTour(a_toi) => format!("TOUR:{}\n", if *a_toi { "OUI" } else { "NON" }),
+            MessageReseau::Revanche(oui) => format!("REV:{}\n", if *oui { "OUI" } else { "NON" }),
         }
     }
 }
