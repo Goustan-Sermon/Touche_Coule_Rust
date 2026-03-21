@@ -58,6 +58,7 @@ pub enum MessageReseau {
     FlotteOk,
     InfoTour(bool),
     Revanche(bool),
+    Chat(String),
 }
 
 impl MessageReseau {
@@ -108,6 +109,9 @@ impl MessageReseau {
             "REV" => {
                 Some(MessageReseau::Revanche(donnees == "OUI"))
             },
+            "CHAT" => {
+                Some(MessageReseau::Chat(donnees.to_string()))
+            },
             _ => None,
         }
     }
@@ -132,6 +136,7 @@ impl MessageReseau {
             MessageReseau::FlotteOk => "FLOTTE_OK:OK\n".to_string(),
             MessageReseau::InfoTour(a_toi) => format!("TOUR:{}\n", if *a_toi { "OUI" } else { "NON" }),
             MessageReseau::Revanche(oui) => format!("REV:{}\n", if *oui { "OUI" } else { "NON" }),
+            MessageReseau::Chat(msg) => format!("CHAT:{}\n", msg),
         }
     }
 }
@@ -245,31 +250,32 @@ pub fn envoyer_message(flux: &mut dyn FluxJeu, message: &MessageReseau) -> Resul
 }
 
 pub fn recevoir_message(flux: &mut dyn FluxJeu) -> Option<MessageReseau> {
-    let mut ligne = String::new();
-    let mut buffer = [0u8; 1]; // On lit 1 octet par 1 octet
-    let mut octets_lus = 0;
+    let mut buffer = [0u8; 1];
+    let mut octets = Vec::new(); // On stocke les octets bruts au lieu des chars
 
     loop {
         match flux.read(&mut buffer) {
-            Ok(0) => return None, 
+            Ok(0) => return None,
             Ok(1) => {
-                let c = buffer[0] as char;
-                ligne.push(c);
-                octets_lus += 1;
+                let b = buffer[0];
+                octets.push(b);
 
-                if c == '\n' {
-                    break; 
+                if b == b'\n' {
+                    break;
                 }
 
-                // Securite Anti-DoS (Buffer Overflow)
-                if octets_lus >= 128 {
+                // On augmente la taille max a 512 octets pour autoriser de longs messages de chat
+                if octets.len() >= 512 {
                     println!("\x1b[1;31m[ALERTE SÉCURITÉ]\x1b[0m Paquet trop long, rejeté !");
                     return None;
                 }
             }
-            _ => return None, // Autre erreur reseau
+            _ => return None,
         }
     }
+    
+    // Convertit les octets en texte en gerant les accents (UTF-8)
+    let ligne = String::from_utf8_lossy(&octets);
     MessageReseau::parser(ligne.trim())
 }
 
