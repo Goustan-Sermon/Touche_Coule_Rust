@@ -258,7 +258,7 @@ fn generer_certificat_serveur() -> (Vec<CertificateDer<'static>>, PrivateKeyDer<
 
 /// Port Knocking : On ecoute sur 3 ports et bloque le programme tant que 
 /// la combinaison (7777 -> 8888 -> 9999) n'est pas effectuee dans le bon ordre
-pub fn attendre_port_knocking() {
+pub fn attendre_port_knocking() -> Result<(), String> {
     println!("\n[GARDIEN] Activation du mode Furtif. Le port 3333 est masqué.");
     println!("[GARDIEN] En attente du signal (Toc-Toc sur 7777, 8888, 9999)...");
 
@@ -269,15 +269,21 @@ pub fn attendre_port_knocking() {
     // flag d'arret partage entre tous les threads
     let stop_flag = Arc::new(AtomicBool::new(false));
 
-    for (etape, &port) in ports_secrets.iter().enumerate() {
+    let mut ecouteurs = Vec::new();
+    for &port in &ports_secrets {
+        match TcpListener::bind(format!("0.0.0.0:{}", port)) {
+            Ok(l) => ecouteurs.push(l),
+            Err(_) => return Err(format!("Le port {} est déjà utilisé. Avez-vous une autre partie en cours ?", port)),
+        }
+    }
+
+    for (etape, ecouteur) in ecouteurs.into_iter().enumerate() {
         let progression_clone = Arc::clone(&progression);
         let tx_clone = tx.clone();
         let stop_flag_clone = Arc::clone(&stop_flag);
         let etape_requise = etape as u8;
 
         thread::spawn(move || {
-            let ecouteur = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
-            
             // On passe l'ecouteur en mode non-bloquant
             // Au lieu de figer le thread en attendant une connexion il verifie en continu
             ecouteur.set_nonblocking(true).unwrap();
@@ -320,6 +326,7 @@ pub fn attendre_port_knocking() {
     thread::sleep(Duration::from_millis(100));
     
     println!("[GARDIEN] Séquence parfaite de {} ! Déverrouillage du vrai port de jeu...", ip_validee);
+    Ok(())
 }
 
 // --- MODULE DE SECURITE POUR ACCEPTER LE CERTIFICAT AUTO-SIGNE ---

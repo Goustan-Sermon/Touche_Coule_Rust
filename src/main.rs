@@ -25,7 +25,7 @@ fn main() {
     io::stdout().flush().unwrap();
     let mut mon_nom = String::new();
     io::stdin().read_line(&mut mon_nom).unwrap();
-    let mon_nom = mon_nom.trim().to_string();
+    let mut mon_nom = mon_nom.trim().to_string();
 
     if mon_nom.is_empty() {
         mon_nom = "Anonyme".to_string();
@@ -108,10 +108,10 @@ fn main() {
         
         // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre)
         let resultat_connexion = if est_hote {
-            // On bloque le programme ici tant que la sequence n'est pas tapee
-            attendre_port_knocking(); 
-            
-            // Une fois la sequence tapee on ouvre reellement le port 3333
+            if let Err(msg) = attendre_port_knocking() {
+                println!("\n[ERREUR] {}", msg);
+                std::process::exit(1);
+            }
             heberger_partie("3333")
         } else {
             rejoindre_partie(&ip_serveur, "3333")
@@ -121,12 +121,12 @@ fn main() {
         let mut flux = match resultat_connexion {
             Some(f) => f,
             None => {
-                if !est_hote {
-                    println!("Impossible de joindre le serveur. Vérifiez l'IP.");
-                    std::process::exit(1);
+                if est_hote {
+                    println!("\n[ERREUR] Impossible de créer le salon.");
+                } else {
+                    println!("\n[ERREUR] Impossible de joindre le serveur. Vérifiez l'IP.");
                 }
-                // Si l'hôte n'a pas pu établir le tunnel avec un client, il relance l'écoute
-                continue; 
+                std::process::exit(1);
             }
         };
 
@@ -235,9 +235,9 @@ fn main() {
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepFin) => {
-                    println!("\n=================================================");
-                    println!("VICTOIRE TOTALE ! La flotte ennemie est détruite !");
-                    println!("=================================================");
+                    println!("\n\x1b[1;32m=========================================================================\x1b[0m");
+                    println!("\x1b[1;32m           VICTOIRE TOTALE ! La flotte ennemie est détruite !            \x1b[0m");
+                    println!("\x1b[1;32m=========================================================================\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                     afficher_plateau_double(&ma_grille, &radar, None);
                     break; // Fin du jeu 
@@ -245,7 +245,9 @@ fn main() {
                 _ => println!("Erreur réseau inattendue."),
             }
             
-            println!("\n--- RADAR MIS À JOUR ---");
+            println!("=========================================================================");
+            println!("                            RADAR MIS À JOUR                            ");
+            println!("=========================================================================\n");
             afficher_plateau_double(&ma_grille, &radar, None);
             
             mon_tour = false; // Fin de mon tour
@@ -263,9 +265,9 @@ fn main() {
 
                     if ma_grille.flotte_coulee() {
                         let _ = envoyer_message(&mut flux_tcp, &MessageReseau::RepFin);
-                        println!("\n=================================================");
-                        println!("  DÉFAITE... Toute votre flotte a été anéantie.  ");
-                        println!("=================================================");
+                        println!("\n\x1b[1;31m=========================================================================\x1b[0m");
+                        println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
+                        println!("\x1b[1;31m=========================================================================\x1b[0m\n");
                         afficher_plateau_double(&ma_grille, &radar, None);
                         break; 
                     }
