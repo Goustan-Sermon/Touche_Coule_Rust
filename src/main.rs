@@ -289,7 +289,7 @@ fn main() {
 
                 if envoyer_message(&mut *flux_tcp, &MessageReseau::Tir(cible)).is_err() {
                     println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
-                    break;
+                    break 'partie;
                 }
                 println!("\x1b[1;36m[RÉSEAU]\x1b[0m Tir envoyé ! En attente du rapport de dégâts...");
 
@@ -309,7 +309,7 @@ fn main() {
                     // L'Hôte informe le client du résultat
                     if envoyer_message(&mut *flux_tcp, &rep_finale).is_err() {
                         println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
-                        break;
+                        break 'partie;
                     }
                     rep_finale // L'Hôte s'auto-renvoie le résultat pour l'afficher
                 } else {
@@ -365,12 +365,13 @@ fn main() {
                             if ma_grille.flotte_coulee() {
                                 if envoyer_message(&mut *flux_tcp, &MessageReseau::RepFin).is_err() {
                                     println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a fui la bataille !");
-                                    break;
+                                    break 'partie;
                                 }
                                 println!("\n\x1b[1;31m=========================================================================\x1b[0m");
                                 println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
                                 println!("\x1b[1;31m=========================================================================\x1b[0m\n");
                                 afficher_plateau_double(&ma_grille, &radar, None);
+                                break;
                             } else {
                                 let reponse = match resultat { 
                                     ResultatTir::Aleau => {
@@ -389,7 +390,7 @@ fn main() {
                                 };
                                 if envoyer_message(&mut *flux_tcp, &reponse).is_err() {
                                     println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
-                                    break;
+                                    break 'partie;
                                 }
                             }
                         } else {
@@ -413,6 +414,7 @@ fn main() {
                                     println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
                                     println!("\x1b[1;31m=========================================================================\x1b[0m\n");
                                     afficher_plateau_double(&ma_grille, &radar, None);
+                                    break;
                                 }
                                 _ => {}
                             }
@@ -421,7 +423,7 @@ fn main() {
                     }
                     None => {
                         println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
-                        break;
+                        break 'partie;
                     }
                     _ => println!("\x1b[1;31m[ALERTE]\x1b[0m Message inattendu pendant le tour adverse."),
                 }
