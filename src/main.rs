@@ -351,7 +351,7 @@ fn main() {
             mon_tour = false; // Fin de mon tour
 
         } else {
-            println!("\n>>> En attente de l'attaque de {}...", nom_adversaire);
+            println!("\n\x1b[1;36m[RÉSEAU]\x1b[0m En attente de l'attaque de \x1b[1m{}\x1b[0m...", nom_adversaire);
 
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::Tir(coord)) => {
@@ -364,7 +364,10 @@ fn main() {
                         // L'Hôte encaisse le tir, calcule et donne le verdict au client
                         let resultat = ma_grille.tirer(coord);
                         if ma_grille.flotte_coulee() {
-                            let _ = envoyer_message(&mut *flux_tcp, &MessageReseau::RepFin);
+                            if envoyer_message(&mut *flux_tcp, &MessageReseau::RepFin).is_err() {
+                                println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a fui la bataille !");
+                                break;
+                            }
                             println!("\n\x1b[1;31m=========================================================================\x1b[0m");
                             println!("\x1b[1;31m              DÉFAITE... Toute votre flotte a été anéantie.              \x1b[0m");
                             println!("\x1b[1;31m=========================================================================\x1b[0m\n");
@@ -415,14 +418,13 @@ fn main() {
                             _ => {}
                         }
                     }
-                    println!("\n--- ÉTAT DE VOTRE FLOTTE ---");
                     afficher_plateau_double(&ma_grille, &radar, None);
                 }
                 None => {
-                    println!("L'adversaire s'est déconnecté.");
+                    println!("\n\x1b[1;31m[DÉCONNEXION]\x1b[0m L'Amiral ennemi a déserté le champ de bataille !");
                     break;
                 }
-                _ => println!("Message inattendu pendant le tour adverse."),
+                _ => println!("\x1b[1;31m[ALERTE]\x1b[0m Message inattendu pendant le tour adverse."),
             }
             mon_tour = true; // L'adversaire a fini
         }
