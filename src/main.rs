@@ -70,11 +70,21 @@ fn main() {
                 break;
             }
             "2" => {
-                print!("Adresse IP du serveur : ");
-                io::stdout().flush().unwrap();
-                let mut ip = String::new();
-                io::stdin().read_line(&mut ip).unwrap();
-                ip_serveur = ip.trim().to_string(); // On sauvegarde l'IP
+                // Boucle de validation stricte de l'adresse IP
+                loop {
+                    print!("Adresse IP du serveur : ");
+                    io::stdout().flush().unwrap();
+                    let mut ip = String::new();
+                    io::stdin().read_line(&mut ip).unwrap();
+                    
+                    // On tente de convertir le texte en vraie adresse IP
+                    if ip.trim().parse::<IpAddr>().is_ok() {
+                        ip_serveur = ip.trim().to_string();
+                        break;
+                    } else {
+                        println!("\x1b[31m[ERREUR]\x1b[0m Format invalide. Veuillez entrer une adresse IPv4 ou IPv6 (ex: 127.0.0.1).\n");
+                    }
+                }
                 
                 print!("Code secret du salon : ");
                 io::stdout().flush().unwrap();
@@ -109,7 +119,7 @@ fn main() {
         // 1. On tente d'etablir la connexion reseau (heberger ou rejoindre)
         let resultat_connexion = if est_hote {
             if let Err(msg) = attendre_port_knocking() {
-                println!("\n[ERREUR] {}", msg);
+                println!("\n\x1b[1;31m[ERREUR]\x1b[0m {}", msg);
                 std::process::exit(1);
             }
             heberger_partie("3333")
@@ -122,9 +132,9 @@ fn main() {
             Some(f) => f,
             None => {
                 if est_hote {
-                    println!("\n[ERREUR] Impossible de créer le salon.");
+                    println!("\n\x1b[1;31m[ERREUR]\x1b[0m Impossible de créer le salon.");
                 } else {
-                    println!("\n[ERREUR] Impossible de joindre le serveur. Vérifiez l'IP.");
+                    println!("\n\x1b[1;31m[ERREUR]\x1b[0m Impossible de joindre le serveur. Vérifiez l'IP.");
                 }
                 std::process::exit(1);
             }
@@ -137,18 +147,18 @@ fn main() {
             // Verification sur la liste noire avant de demander le code
             if let Some(&nb_echecs) = tentatives_echouees.get(&ip_client) {
                 if nb_echecs >= 3 {
-                    println!("[BAN] Tentative de connexion bloquée pour {}", ip_client);
+                    println!("\x1b[1;31m[BAN]\x1b[0m Tentative de connexion bloquée pour {}", ip_client);
                     let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     continue; // On refuse la connexion et on retourne au menu d'attente pour le prochain client
                 }
             }
 
-            println!("[AUTH] En attente de l'authentification de {}...", ip_client);
+            println!("\x1b[1;34m[AUTH]\x1b[0m En attente de l'authentification de {}...", ip_client);
             
             match recevoir_message(&mut *flux) {
                 Some(MessageReseau::Hello(nom_client, code_client)) => {
                     if code_client == code_secret {
-                        println!("[SUCCÈS] Authentification réussie pour {}.", nom_client);
+                        println!("\x1b[1;32m[SUCCÈS]\x1b[0m Authentification réussie pour {}.", nom_client);
                         tentatives_echouees.remove(&ip_client); // On efface ses erreurs precedentes en cas de succes
                         
                         envoyer_message(&mut *flux, &MessageReseau::RepAuthOk).unwrap();
@@ -161,11 +171,11 @@ fn main() {
                         // ECHEC : Ajout à la liste noire
                         let n = tentatives_echouees.entry(ip_client).or_insert(0);
                         *n += 1;
-                        println!("[ALERTE] Mauvais code ({}/3) de {}", *n, ip_client);
+                        println!("\x1b[1;31m[ALERTE]\x1b[0m Mauvais code ({}/3) de {}", *n, ip_client);
                         let _ = envoyer_message(&mut *flux, &MessageReseau::RepAuthFail);
                     }
                 }
-                _ => println!("[ALERTE] Déconnexion inattendue pendant l'authentification."),
+                _ => println!("\x1b[1;31m[ALERTE]\x1b[0m Déconnexion inattendue pendant l'authentification."),
             }
         } else {
             // Logique du Client
@@ -174,20 +184,20 @@ fn main() {
             
             match recevoir_message(&mut *flux) {
                 Some(MessageReseau::RepAuthOk) => {
-                    println!("[SUCCÈS] Accès autorisé !");
+                    println!("\x1b[1;32m[SUCCÈS]\x1b[0m Accès autorisé !");
                     if let Some(MessageReseau::Hello(nom_hote, _)) = recevoir_message(&mut *flux) {
                         break (flux, nom_hote); // Succes pour le client aussi
                     }
                 }
                 _ => {
-                    println!("[BAN] Le code de salon est incorrect ou vous êtes banni.");
+                    println!("\x1b[1;31m[BAN]\x1b[0m Le code de salon est incorrect ou vous êtes banni.");
                     std::process::exit(1); // Le client ferme son jeu
                 }
             }
         }
     };
 
-    println!("\n[ALLIANCE] Connexion sécurisée avec l'Amiral {} !\n", nom_adversaire.to_uppercase());
+    println!("\n\x1b[1;32m[ALLIANCE]\x1b[0m Connexion sécurisée avec l'Amiral {} !\n", nom_adversaire.to_uppercase());
 
     // 4. La phase de placement (Chacun le fait de son cote localement)
     let mut ma_grille = Grille::new();
@@ -214,24 +224,24 @@ fn main() {
             // On traduit la coordonnee pour l'affichage
             let lettre = (b'A' + cible.x as u8) as char;
             let chiffre = cible.y + 1;
-            println!("\n[CIBLE] Verrouillage des missiles sur {}{}...", lettre, chiffre);
+            println!("\n\x1b[1;33m[CIBLE]\x1b[0m Verrouillage des missiles sur {}{}...", lettre, chiffre);
 
             // 1. On envoie la coordonnee a l'adversaire
             let _ = envoyer_message(&mut flux_tcp, &MessageReseau::Tir(cible));
-            println!("[RÉSEAU] Tir envoyé ! En attente du rapport de dégâts...");
+            println!("\x1b[1;36m[RÉSEAU]\x1b[0m Tir envoyé ! En attente du rapport de dégâts...");
 
             // 2. On attend sa reponse pour mettre a jour notre radar
             match recevoir_message(&mut flux_tcp) {
                 Some(MessageReseau::RepAleau) => {
-                    println!("[RÉSULTAT] \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
+                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[90mPlouf... C'est dans l'eau.\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Aleau;
                 }
                 Some(MessageReseau::RepTouche) => {
-                    println!("[RÉSULTAT] \x1b[31mBOUM ! Vous avez touché un navire !\x1b[0m\n");
+                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mBOUM ! Vous avez touché un navire !\x1b[0m\n");
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepCoule(nom)) => {
-                    println!("[RÉSULTAT] \x1b[31mTOUCHÉ ET COULÉ ! Vous avez détruit le {} !\x1b[0m\n", nom);
+                    println!("\x1b[1;33m[RÉSULTAT]\x1b[0m \x1b[31mTOUCHÉ ET COULÉ ! Vous avez détruit le {} !\x1b[0m\n", nom);
                     radar.cases[cible.y][cible.x].etat = modele::EtatCase::Touche;
                 }
                 Some(MessageReseau::RepFin) => {
