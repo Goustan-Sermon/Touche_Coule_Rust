@@ -1,5 +1,7 @@
 // src/modele.rs
 
+use crate::affichage::C;
+
 pub const TAILLE_GRILLE: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,13 +62,6 @@ impl Grille {
     pub fn vers_lignes(&self, cacher_bateaux: bool, curseur: Option<Coordonnee>, fantome: Option<&Navire>) -> Vec<String> {
         let mut lignes = Vec::new();
 
-        // Definition des couleurs ANSI
-        let color_eau = "\x1b[34m";    // Bleu
-        let color_bateau = "\x1b[32m"; // Vert
-        let color_touche = "\x1b[31m"; // Rouge
-        let color_aleau = "\x1b[90m";  // Gris fonce
-        let reset = "\x1b[0m";         // Reinitialiser la couleur
-
         // Ligne d'entete
         let mut entete = String::from("   ");
         for x in 0..TAILLE_GRILLE {
@@ -81,10 +76,10 @@ impl Grille {
 
             for x in 0..TAILLE_GRILLE {
                 let (char_symbole, couleur) = match self.cases[y][x].etat {
-                    EtatCase::Vide => ('~', color_eau),
-                    EtatCase::Bateau => if cacher_bateaux { ('~', color_eau) } else { ('B', color_bateau) },
-                    EtatCase::Touche => ('X', color_touche),
-                    EtatCase::Aleau => ('O', color_aleau),
+                    EtatCase::Vide => ('~', C::BLEU),
+                    EtatCase::Bateau => if cacher_bateaux { ('~', C::BLEU) } else { ('B', C::VERT) },
+                    EtatCase::Touche => ('X', C::ROUGE),
+                    EtatCase::Aleau => ('O', C::GRIS),
                 };
 
                 let est_fantome = match fantome {
@@ -99,11 +94,11 @@ impl Grille {
 
                 // Affichage SANS fond blanc, juste les crochets pour marquer la cible
                 if est_fantome {
-                    ligne.push_str(&format!("{}[B]{}", color_bateau, reset));
+                    ligne.push_str(&format!("{}[B]{}", C::VERT, C::RESET));
                 } else if est_cible {
-                    ligne.push_str(&format!("{}[{}]{}", couleur, char_symbole, reset));
+                    ligne.push_str(&format!("{}[{}]{}", couleur, char_symbole, C::RESET));
                 } else {
-                    ligne.push_str(&format!(" {}{}{} ", couleur, char_symbole, reset));
+                    ligne.push_str(&format!(" {}{}{} ", couleur, char_symbole, C::RESET));
                 }
             }
             lignes.push(ligne);
@@ -217,7 +212,6 @@ pub struct Navire {
 }
 
 impl Navire {
-
     pub fn new(nom: &str, taille: usize, coord_depart: Coordonnee, orientation: Orientation) -> Self {
         Navire {
             nom: nom.to_string(), // On convertit le texte statique en String dynamique

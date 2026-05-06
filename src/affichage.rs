@@ -10,6 +10,21 @@ use crossterm::{
 use std::io::{self, stdout, Write};
 use rand::RngExt;
 
+// --- PALETTE DE COULEURS ANSI ---
+pub struct C;
+impl C {
+    pub const CYAN: &'static str = "\x1b[1;36m";
+    pub const VERT: &'static str = "\x1b[1;32m";
+    pub const ROUGE: &'static str = "\x1b[1;31m";
+    pub const JAUNE: &'static str = "\x1b[1;33m";
+    pub const MAGENTA: &'static str = "\x1b[1;35m";
+    pub const BLEU: &'static str = "\x1b[1;34m";
+    pub const GRIS: &'static str = "\x1b[90m";
+    pub const GRAS: &'static str = "\x1b[1m";
+    pub const ITALIQUE: &'static str = "\x1b[3m";
+    pub const RESET: &'static str = "\x1b[0m";
+}
+
 pub enum ActionTour {
     Tir(Coordonnee),
     Chat(String),
@@ -20,33 +35,33 @@ pub fn afficher_guide() {
     let mut terminal = io::stdout();
     execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
 
-    println!("\x1b[1;36m===========================================================\x1b[0m");
-    println!("\x1b[1;36m                  GUIDE DE L'AMIRAL                        \x1b[0m");
-    println!("\x1b[1;36m===========================================================\x1b[0m\n");
+    println!("{}==========================================================={}", C::CYAN, C::RESET);
+    println!("{}                  GUIDE DE L'AMIRAL                        {}", C::CYAN, C::RESET);
+    println!("{}==========================================================={}\n", C::CYAN, C::RESET);
     
-    println!("\x1b[1;34m --- CONNEXION RÉSEAU & ADRESSE IP ---\x1b[0m");
+    println!("{} --- CONNEXION RÉSEAU & ADRESSE IP ---{}", C::BLEU, C::RESET);
     println!("L'Hôte doit communiquer son adresse IP locale au joueur qui le rejoint.");
-    println!("  - Sous \x1b[1mWindows\x1b[0m : Ouvrez l'invite de commande et tapez '\x1b[1;33mipconfig\x1b[0m' (cherchez l'adresse IPv4).");
-    println!("  - Sous \x1b[1mLinux/Mac\x1b[0m : Ouvrez le terminal et tapez '\x1b[1;33mhostname -I\x1b[0m' ou '\x1b[1;33mip a\x1b[0m'.");
-    println!("  (\x1b[35mAstuce\x1b[0m : Tapez '\x1b[1;33m127.0.0.1\x1b[0m' pour jouer contre vous-même sur le même PC !)\n");
+    println!("  - Sous {}Windows{} : Ouvrez l'invite de commande et tapez '{}ipconfig{}' (cherchez l'adresse IPv4).", C::GRAS, C::RESET, C::JAUNE, C::RESET);
+    println!("  - Sous {}Linux/Mac{} : Ouvrez le terminal et tapez '{}hostname -I{}' ou '{}ip a{}'.", C::GRAS, C::RESET, C::JAUNE, C::RESET, C::JAUNE, C::RESET);
+    println!("  ({}Astuce{} : Tapez '{}127.0.0.1{}' pour jouer contre vous-même sur le même PC !)\n", C::MAGENTA, C::RESET, C::JAUNE, C::RESET);
 
-    println!("\x1b[1;34m --- COMMANDES DE JEU ---\x1b[0m");
-    println!("  - \x1b[1;33mFLÈCHES\x1b[0m : Déplacer le curseur de ciblage ou votre bateau.");
-    println!("  - \x1b[1;33mTOUCHE 'R'\x1b[0m : Faire pivoter le navire lors du déploiement.");
-    println!("  - \x1b[1;33mENTRÉE\x1b[0m : Valider un tir ou confirmer le placement d'un navire.\n");
+    println!("{} --- COMMANDES DE JEU ---{}", C::BLEU, C::RESET);
+    println!("  - {}FLÈCHES{} : Déplacer le curseur de ciblage ou votre bateau.", C::JAUNE, C::RESET);
+    println!("  - {}TOUCHE 'R'{} : Faire pivoter le navire lors du déploiement.", C::JAUNE, C::RESET);
+    println!("  - {}ENTRÉE{} : Valider un tir ou confirmer le placement d'un navire.\n", C::JAUNE, C::RESET);
 
-    println!("\x1b[1;34m --- DÉROULEMENT D'UN TOUR ---\x1b[0m");
-    println!("  \x1b[1;32m1.\x1b[0m C'est votre tour : Vous visez sur le radar et tirez.");
-    println!("  \x1b[1;32m2.\x1b[0m Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).");
-    println!("  \x1b[1;32m3.\x1b[0m L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.");
-    println!("  \x1b[1;32m4.\x1b[0m Les rôles s'inversent ! Le suspense est total.\n");
+    println!("{} --- DÉROULEMENT D'UN TOUR ---{}", C::BLEU, C::RESET);
+    println!("  {}1.{} C'est votre tour : Vous visez sur le radar et tirez.", C::VERT, C::RESET);
+    println!("  {}2.{} Le jeu vous informe immédiatement du résultat (À l'eau, Touché, Coulé).", C::VERT, C::RESET);
+    println!("  {}3.{} L'adversaire voit votre tir s'abattre sur sa propre grille et encaisse les dégâts.", C::VERT, C::RESET);
+    println!("  {}4.{} Les rôles s'inversent ! Le suspense est total.\n", C::VERT, C::RESET);
 
-    println!("\x1b[1;34m --- LÉGENDE DU RADAR ---\x1b[0m");
-    println!("  [\x1b[34m~\x1b[0m] : Eau inexplorée        [\x1b[90mO\x1b[0m] : Tir raté (Plouf !)");
-    println!("  [\x1b[32mB\x1b[0m] : Vos navires           [\x1b[31mX\x1b[0m] : Navire touché !");
+    println!("{} --- LÉGENDE DU RADAR ---{}", C::BLEU, C::RESET);
+    println!("  [{}~{}] : Eau inexplorée        [{}O{}] : Tir raté (Plouf !)", C::BLEU, C::RESET, C::GRIS, C::RESET);
+    println!("  [{}B{}] : Vos navires           [{}X{}] : Navire touché !", C::VERT, C::RESET, C::ROUGE, C::RESET);
 
-    println!("\n\x1b[1;36m===========================================================\x1b[0m");
-    println!("Appuyez sur \x1b[1;33mENTRÉE\x1b[0m pour retourner au Centre de Commandement...");
+    println!("\n{}==========================================================={}", C::CYAN, C::RESET);
+    println!("Appuyez sur {}ENTRÉE{} pour retourner au Centre de Commandement...", C::JAUNE, C::RESET);
     
     let mut attente = String::new();
     io::stdin().read_line(&mut attente).unwrap();
@@ -65,7 +80,6 @@ pub fn afficher_plateau_double(ma_grille: &Grille, radar: &Grille, curseur_radar
 }
 
 pub fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionTour {
-    // Securite anti ghosting
     enable_raw_mode().unwrap();
     
     while crossterm::event::poll(std::time::Duration::from_millis(50)).unwrap() {
@@ -97,7 +111,6 @@ pub fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionT
         println!("   FLÈCHES : Déplacer | ENTRÉE : Tirer | 'C' : Message | 'Q' : Quitter   ");
         println!("=========================================================================\n");
         
-        // On affiche le double tableau avec le curseur projete sur le radar
         afficher_plateau_double(ma_grille, radar, Some(curseur));
         
         enable_raw_mode().unwrap();
@@ -119,7 +132,7 @@ pub fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionT
                     }
                     KeyCode::Char('c') | KeyCode::Char('C') => {
                         disable_raw_mode().unwrap();
-                        print!("\n\x1b[1;35m[CANAL RADIO]\x1b[0m Transmission : ");
+                        print!("\n{}[CANAL RADIO]{} Transmission : ", C::MAGENTA, C::RESET);
                         io::stdout().flush().unwrap();
                         let mut msg = String::new();
                         match io::stdin().read_line(&mut msg) {
@@ -129,7 +142,7 @@ pub fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionT
                                 }
                             }
                             Err(_) => {
-                                println!("\x1b[1;31m[ERREUR]\x1b[0m Saisie invalide ou caractère non supporté.");
+                                println!("{}[ERREUR]{} Saisie invalide ou caractère non supporté.", C::ROUGE, C::RESET);
                                 std::thread::sleep(std::time::Duration::from_secs(2));
                             }
                         }
@@ -147,14 +160,13 @@ pub fn choisir_action_interactive(ma_grille: &Grille, radar: &Grille) -> ActionT
 
 pub fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
     let mut curseur = Coordonnee { x: 0, y: 0 };
-    let mut est_horizontal = true; // On gere l'orientation avec un booleen
-    let mut message_erreur = String::new(); // Pour afficher si on place mal le bateau
+    let mut est_horizontal = true;
+    let mut message_erreur = String::new(); 
 
     loop {
         disable_raw_mode().unwrap();
         let mut terminal = stdout();
         
-        // On se replace tout en haut a gauche et on nettoie vers le bas
         execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::FromCursorDown)).unwrap();
         
         println!("=================================================");
@@ -165,24 +177,19 @@ pub fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
         println!(" Orientation actuelle : {}", texte_orientation);
         println!("=================================================\n");
 
-        // Affichage dynamique des erreurs
         if !message_erreur.is_empty() {
-            println!("ERREUR : {}\n", message_erreur);
+            println!("{}[ERREUR]{} {}\n", C::ROUGE, C::RESET, message_erreur);
         } else {
-            println!("\n"); // Pour garder la grille a la meme hauteur
+            println!("\n"); 
         }
 
-        // 1. On traduit l'orientation actuelle
         let orientation_fantome = if est_horizontal { 
             Orientation::Horizontal 
         } else { 
             Orientation::Vertical 
         };
         
-        // 2. On cree le navire fantome (il n'est pas encore dans la grille c'est juste un modele)
         let navire_fantome = Navire::new(nom, taille, curseur, orientation_fantome);
-
-        // 3. On l'affiche (On met None pour le curseur simple et Some pour le fantome)
         grille.afficher(false, None, Some(&navire_fantome));
 
         enable_raw_mode().unwrap();
@@ -221,11 +228,9 @@ pub fn placer_navire_interactif(grille: &mut Grille, nom: &str, taille: usize) {
                     _ => {}
                 }
 
-                // 1. On calcule la bordure maximum selon l'orientation et la taille du bateau
                 let limite_x = if est_horizontal { TAILLE_GRILLE - taille } else { TAILLE_GRILLE - 1 };
                 let limite_y = if est_horizontal { TAILLE_GRILLE - 1 } else { TAILLE_GRILLE - taille };
 
-                // 2. Si le curseur depasse cette bordure on le force a rester dedans
                 if curseur.x > limite_x { curseur.x = limite_x; }
                 if curseur.y > limite_y { curseur.y = limite_y; }
             }
@@ -267,8 +272,7 @@ pub fn placer_flotte_aleatoire(grille: &mut Grille) {
 pub fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
     let mut terminal = stdout();
     disable_raw_mode().unwrap();
-    
-    let mut message_erreur = String::new();
+    let mut message_erreur = String::new(); 
 
     let choix = loop {
         execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
@@ -278,7 +282,7 @@ pub fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
         println!("=====================================\n");
         
         if !message_erreur.is_empty() {
-            println!("\x1b[1;31m[ERREUR]\x1b[0m {}\n", message_erreur);
+            println!("{}[ERREUR]{} {}\n", C::ROUGE, C::RESET, message_erreur);
         }
         
         println!("Comment souhaitez-vous déployer votre flotte ?");
@@ -298,10 +302,8 @@ pub fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
     };
     
     if choix == "2" {
-        // Deploiement aleatoire
         placer_flotte_aleatoire(grille);
     } else {
-        // Deploiement manuel interactif
         let flotte_a_placer = [
             ("Porte-avions", 5),
             ("Croiseur", 4),
@@ -314,7 +316,6 @@ pub fn phase_placement(grille: &mut Grille, nom_joueur: &str) {
         }
     }
 
-    // Affichage final de la grille
     execute!(terminal, cursor::MoveTo(0, 0), Clear(ClearType::All)).unwrap();
     
     println!("\n=====================================");

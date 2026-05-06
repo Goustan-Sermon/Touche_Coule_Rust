@@ -22,7 +22,7 @@ Assurez-vous d'avoir [Rust et Cargo](https://www.rust-lang.org/tools/install) ai
 
 1. Clonez le dépôt :
    ```sh
-   git clone [https://github.com/Goustan-Sermon/Touche_Coule_Rust.git](https://github.com/Goustan-Sermon/Touche_Coule_Rust.git)
+   git clone https://github.com/Goustan-Sermon/Touche_Coule_Rust.git
    ```
 2. Naviguez dans le dossier du projet :
    ```sh
