@@ -1,0 +1,4 @@
+# Bot Amiral - Bataille Navale
+# 
+# Ce projet n'utilise que la bibliothèque standard de Python 3.
+# Aucune dépendance externe n'est requise.
