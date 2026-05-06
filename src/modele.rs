@@ -1,3 +1,5 @@
+// src/modele.rs
+
 pub const TAILLE_GRILLE: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -244,61 +246,6 @@ impl Navire {
             }
         }
         false
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Joueur {
-    J1,
-    J2,
-}
-
-impl Joueur {
-
-    pub fn adversaire(&self) -> Joueur {
-        match self {
-            Joueur::J1 => Joueur::J2,
-            Joueur::J2 => Joueur::J1,
-        }
-    }
-}
-
-pub struct Partie {
-    pub grille_j1: Grille,
-    pub grille_j2: Grille,
-    pub tour_actuel: Joueur,
-    pub nom_j1: String,
-    pub nom_j2: String,
-}
-
-impl Partie {
-    pub fn new(nom_j1: &str, nom_j2: &str) -> Self {
-        Partie {
-            grille_j1: Grille::new(),
-            grille_j2: Grille::new(),
-            tour_actuel: Joueur::J1,
-            nom_j1: nom_j1.to_string(),
-            nom_j2: nom_j2.to_string(),
-        }
-    }
-
-    pub fn nom_joueur_actuel(&self) -> &str {
-        match self.tour_actuel {
-            Joueur::J1 => &self.nom_j1,
-            Joueur::J2 => &self.nom_j2,
-        }
-    }
-
-    // Renvoie la grille sur laquelle on tire
-    pub fn grille_cible(&mut self) -> &mut Grille {
-        match self.tour_actuel {
-            Joueur::J1 => &mut self.grille_j2, // Si c'est au J1 de jouer, il tire sur la grille du J2
-            Joueur::J2 => &mut self.grille_j1,
-        }
-    }
-
-    pub fn changer_tour(&mut self) {
-        self.tour_actuel = self.tour_actuel.adversaire();
     }
 }
 

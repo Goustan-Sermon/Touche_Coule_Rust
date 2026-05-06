@@ -1,6 +1,8 @@
+// src/reseau.rs
+
 use crate::modele::{analyser_saisie, Coordonnee};
 use std::net::{IpAddr, TcpListener, TcpStream};
-use std::io::{BufRead, BufReader, Write, Read};
+use std::io::{Write, Read};
 use std::sync::{Mutex, mpsc, Arc};
 use rustls::{ClientConfig, ServerConfig, StreamOwned, ServerConnection, ClientConnection};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
@@ -53,7 +55,6 @@ pub enum MessageReseau {
     RepFin,
     RepAuthOk,
     RepAuthFail,
-    // NOUVEAU : Pour transférer la flotte
     EnvoiNavire(String, usize, usize, usize, String), 
     FlotteOk,
     InfoTour(bool),
